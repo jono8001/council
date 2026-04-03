@@ -10,10 +10,9 @@ import { scoreAuthority, tallySignalCategories } from "@/lib/ingest/scoreAuthori
 const USER_AGENT =
   "CouncilFinanceRadar/1.0 (+https://github.com/jono8001/council; transparency research bot)";
 
-const FETCH_HEADERS = {
-  "User-Agent": USER_AGENT,
-  Accept: "*/*",
-};
+const FETCH_TIMEOUT_MS = 30_000; // 30 seconds per fetch
+const MAX_DOCS_PER_AUTHORITY = 20; // Limit documents parsed per authority to keep CI fast
+const MAX_DISCOVERED_LINKS = 50; // Limit discovered links stored per source
 
 function detectFormat(url: string): SourceFormat {
   const pathname = new URL(url).pathname.toLowerCase();
@@ -24,22 +23,37 @@ function detectFormat(url: string): SourceFormat {
   return SourceFormat.html;
 }
 
-async function fetchBuffer(url: string): Promise<Buffer> {
-  const response = await fetch(url, { headers: FETCH_HEADERS, redirect: "follow" });
-  if (!response.ok) {
-    throw new Error(`Failed fetch (${response.status}) for ${url}`);
+async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "*/*",
+        ...init?.headers,
+      },
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed fetch (${response.status}) for ${url}`);
+    }
+    return response;
+  } finally {
+    clearTimeout(timeout);
   }
+}
 
+async function fetchBuffer(url: string): Promise<Buffer> {
+  const response = await fetchWithTimeout(url);
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, { headers: FETCH_HEADERS, redirect: "follow" });
-  if (!response.ok) {
-    throw new Error(`Failed fetch (${response.status}) for ${url}`);
-  }
-
+  const response = await fetchWithTimeout(url);
   return response.text();
 }
 
@@ -58,17 +72,18 @@ export async function runIngestion() {
 
         try {
           const links = await discoverLinks(source.baseUrl);
-          const discovered = [...links.spendLinks, ...links.reportLinks, ...links.procurementLinks];
+          // Limit discovered links to avoid overwhelming the DB and CI
+          const spendLinks = links.spendLinks.slice(0, MAX_DISCOVERED_LINKS);
+          const reportLinks = links.reportLinks.slice(0, MAX_DISCOVERED_LINKS);
+          const procurementLinks = links.procurementLinks.slice(0, MAX_DISCOVERED_LINKS);
+          const discovered = [...spendLinks, ...reportLinks, ...procurementLinks];
 
           console.log(`${authority.slug}: discovered ${discovered.length} links from ${source.baseUrl}`);
 
           for (const link of discovered) {
             await db.document.upsert({
               where: { authorityId_url: { authorityId: authority.id, url: link } },
-              update: {
-                sourceId: source.id,
-                format: detectFormat(link),
-              },
+              update: { sourceId: source.id, format: detectFormat(link) },
               create: {
                 authorityId: authority.id,
                 sourceId: source.id,
@@ -88,9 +103,16 @@ export async function runIngestion() {
         }
       }
 
+      // Only parse downloadable documents (CSV, XLSX, PDF), limited per authority
       const documents = await db.document.findMany({
-        where: { authorityId: authority.id },
+        where: {
+          authorityId: authority.id,
+          format: { not: SourceFormat.html },
+        },
+        take: MAX_DOCS_PER_AUTHORITY,
       });
+
+      console.log(`${authority.slug}: parsing ${documents.length} documents`);
 
       for (const document of documents) {
         try {
@@ -113,12 +135,10 @@ export async function runIngestion() {
                 },
               });
             }
+            console.log(`${authority.slug}: parsed ${rows.length} spend rows from ${document.url}`);
           }
 
-          if (
-            document.format === SourceFormat.xlsx ||
-            document.format === SourceFormat.xls
-          ) {
+          if (document.format === SourceFormat.xlsx || document.format === SourceFormat.xls) {
             const buffer = await fetchBuffer(document.url);
             const rows = parseSpendXlsx(buffer);
             await db.spendTransaction.deleteMany({
@@ -137,6 +157,7 @@ export async function runIngestion() {
                 },
               });
             }
+            console.log(`${authority.slug}: parsed ${rows.length} spend rows from ${document.url}`);
           }
 
           if (document.format === SourceFormat.pdf) {
@@ -166,28 +187,22 @@ export async function runIngestion() {
                 },
               });
             }
+            console.log(`${authority.slug}: extracted ${signals.length} signals from ${document.url}`);
           }
         } catch (error) {
-          errors.push(
-            `${authority.slug}: parsing failed for ${document.url} (${String(error)})`,
-          );
+          errors.push(`${authority.slug}: parsing failed for ${document.url} (${String(error)})`);
         }
       }
 
-      // Score authority based on signals
-      const signals = await db.signal.findMany({
-        where: { authorityId: authority.id },
-      });
-
+      // Score authority
+      const signals = await db.signal.findMany({ where: { authorityId: authority.id } });
       const scoreBuckets = tallySignalCategories(
-        signals.map((signal) => ({ category: signal.category, weight: signal.weight })),
+        signals.map((s) => ({ category: s.category, weight: s.weight })),
       );
-
       const score = scoreAuthority({
         ...scoreBuckets,
         hasRecentWarning: signals.some(
-          (signal) =>
-            Date.now() - signal.detectedAt.getTime() <= 30 * 24 * 60 * 60 * 1000,
+          (s) => Date.now() - s.detectedAt.getTime() <= 30 * 24 * 60 * 60 * 1000,
         ),
         spendSpike: false,
       });
@@ -208,19 +223,18 @@ export async function runIngestion() {
           publicationStatus: score.publicationStatus,
         },
       });
+
+      console.log(`${authority.slug}: scored ${score.overall} (${score.band})`);
     }
 
-    // Generate daily briefing
+    // Daily briefing
     const topSignals = await db.signal.findMany({
       orderBy: { detectedAt: "desc" },
       take: 6,
       include: { authority: true },
     });
-
     const today = new Date();
-    const utcDateOnly = new Date(
-      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
-    );
+    const utcDateOnly = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     await db.dailyBriefing.upsert({
       where: { briefingDate: utcDateOnly },
@@ -229,10 +243,8 @@ export async function runIngestion() {
           ? `${topSignals[0].authority.name}: ${topSignals[0].title}`
           : "No new high-severity signals detected today",
         body: topSignals.length
-          ? topSignals
-              .map((signal) => `${signal.authority.name}: ${signal.title}`)
-              .join("; ")
-          : "No signals extracted from configured sources. Add or fix source registry coverage.",
+          ? topSignals.map((s) => `${s.authority.name}: ${s.title}`).join("; ")
+          : "No signals extracted from configured sources.",
       },
       create: {
         briefingDate: utcDateOnly,
@@ -240,14 +252,13 @@ export async function runIngestion() {
           ? `${topSignals[0].authority.name}: ${topSignals[0].title}`
           : "No new high-severity signals detected today",
         body: topSignals.length
-          ? topSignals
-              .map((signal) => `${signal.authority.name}: ${signal.title}`)
-              .join("; ")
-          : "No signals extracted from configured sources. Add or fix source registry coverage.",
+          ? topSignals.map((s) => `${s.authority.name}: ${s.title}`).join("; ")
+          : "No signals extracted from configured sources.",
       },
     });
 
-    const runStats = await Promise.all([
+    // Final stats
+    const [authCount, docCount, spendCount, contractCount, signalCount] = await Promise.all([
       db.authority.count(),
       db.document.count(),
       db.spendTransaction.count(),
@@ -255,15 +266,17 @@ export async function runIngestion() {
       db.signal.count(),
     ]);
 
+    console.log(`Ingestion complete: ${authCount} authorities, ${docCount} documents, ${spendCount} spend rows, ${signalCount} signals`);
+
     await db.ingestionRun.update({
       where: { id: run.id },
       data: {
         status: errors.length ? "partial" : "success",
-        authoritiesCount: runStats[0],
-        documentsCount: runStats[1],
-        spendRowsCount: runStats[2],
-        contractsCount: runStats[3],
-        signalsCount: runStats[4],
+        authoritiesCount: authCount,
+        documentsCount: docCount,
+        spendRowsCount: spendCount,
+        contractsCount: contractCount,
+        signalsCount: signalCount,
         errors,
         completedAt: new Date(),
       },
@@ -271,11 +284,7 @@ export async function runIngestion() {
   } catch (error) {
     await db.ingestionRun.update({
       where: { id: run.id },
-      data: {
-        status: "failed",
-        errors: [String(error)],
-        completedAt: new Date(),
-      },
+      data: { status: "failed", errors: [String(error)], completedAt: new Date() },
     });
     throw error;
   }
