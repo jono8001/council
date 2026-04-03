@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  transparency
+  finance_reports
+  procurement
+  meetings
+}
+
+enum SourceFormat {
+  html
+  csv
+  xlsx
+  xls
+  pdf
+  json
+}
+
+enum SourceStatus {
+  active
+  inactive
+  blocked
+}
+
+enum SignalCategory {
+  structural
+  current_warning
+  spend_pattern
+  procurement
+  governance_history
+}
+
+enum Severity {
+  low
+  medium
+  high
+}
+
+enum Band {
+  Guarded
+  Elevated
+  Critical
+}
+
+enum IngestionStatus {
+  running
+  success
+  partial
+  failed
+}
+
+model Authority {
+  id                String            @id @default(cuid())
+  name              String
+  slug              String            @unique
+  type              String
+  region            String
+  officialUrl       String?
+  coverageNote      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  sources           Source[]
+  documents         Document[]
+  spendTransactions SpendTransaction[]
+  contractAwards    ContractAward[]
+  signals           Signal[]
+  scoreSnapshots    ScoreSnapshot[]
+
+  @@index([slug])
+}
+
+model Source {
+  id            String       @id @default(cuid())
+  authorityId   String
+  authority     Authority    @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  sourceType    SourceType
+  baseUrl       String
+  sourceFormat  SourceFormat
+  parserName    String
+  status        SourceStatus @default(active)
+  lastFetchedAt DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  documents     Document[]
+
+  @@unique([authorityId, sourceType])
+  @@index([authorityId, sourceType])
+}
+
+model Document {
+  id              String      @id @default(cuid())
+  authorityId     String
+  authority       Authority   @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  sourceId        String?
+  source          Source?     @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  title           String
+  url             String
+  publicationDate DateTime?
+  format          SourceFormat
+  extractedText   String?
+  checksum        String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  signals         Signal[]
+
+  @@unique([authorityId, url])
+}
+
+model SpendTransaction {
+  id          String   @id @default(cuid())
+  authorityId String
+  authority   Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  date        DateTime?
+  supplier    String
+  amount      Decimal  @db.Decimal(14, 2)
+  serviceArea String?
+  description String?
+  sourceUrl   String?
+  createdAt   DateTime @default(now())
+
+  @@index([authorityId, date])
+}
+
+model ContractAward {
+  id            String   @id @default(cuid())
+  authorityId    String
+  authority      Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  title         String
+  supplier      String
+  value         Decimal  @db.Decimal(14, 2)
+  awardedAt     DateTime?
+  sourceUrl     String?
+  createdAt     DateTime @default(now())
+}
+
+model Signal {
+  id           String         @id @default(cuid())
+  authorityId  String
+  authority    Authority      @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  documentId   String?
+  document     Document?      @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  category     SignalCategory
+  severity     Severity
+  title        String
+  evidenceText String
+  sourceUrl    String
+  weight       Int
+  detectedAt   DateTime
+  createdAt    DateTime       @default(now())
+
+  @@index([authorityId, detectedAt])
+}
+
+model ScoreSnapshot {
+  id                     String   @id @default(cuid())
+  authorityId            String
+  authority              Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  structural             Int
+  currentWarning         Int
+  spendPattern           Int
+  procurement            Int
+  governanceHistory      Int
+  overall                Int
+  band                   Band
+  explanation            String
+  borrowingIndicator     String
+  reservesSignal         String
+  publicationStatus      String
+  recordedAt             DateTime @default(now())
+}
+
+model DailyBriefing {
+  id          String   @id @default(cuid())
+  briefingDate DateTime @unique
+  headline    String
+  body        String
+  createdAt   DateTime @default(now())
+}
+
+model IngestionRun {
+  id                 String          @id @default(cuid())
+  status             IngestionStatus @default(running)
+  authoritiesCount   Int             @default(0)
+  documentsCount     Int             @default(0)
+  spendRowsCount     Int             @default(0)
+  contractsCount     Int             @default(0)
+  signalsCount       Int             @default(0)
+  errors             Json?
+  startedAt          DateTime        @default(now())
+  completedAt        DateTime?
+}

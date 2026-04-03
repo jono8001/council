@@ -43,7 +43,7 @@ export default function MethodologyPage() {
         </section>
         <section className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h2 className="font-bold text-slate-900 mb-3">Limitations</h2>
-          <p className="text-sm text-slate-600 leading-relaxed">This tool uses seeded sample data for Phase 1. Live data ingestion pipelines are planned for Phase 2. Scores are indicative and based on publicly available signals only. They should not be used as the sole basis for any financial or policy decisions.</p>
+          <p className="text-sm text-slate-600 leading-relaxed">Scores are generated from stored source documents, parsed spend files, and rule-based signal extraction. Coverage varies by authority and depends on currently configured source URLs. Scores are indicative and should not be used as the sole basis for financial or policy decisions.</p>
         </section>
       </main>
     </div>

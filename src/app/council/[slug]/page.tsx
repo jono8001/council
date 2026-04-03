@@ -1,89 +1,182 @@
-import { getAuthority, getAllAuthorities, getScore, getEvents, getDocuments, getContracts, getSpendSummary } from '@/lib/repository';
-import { getBand, getBandColor } from '@/lib/scoring';
-import { formatCurrency, formatChange } from '@/lib/format';
-import Link from 'next/link';
+import Link from "next/link";
+import {
+  getAuthority,
+  getAuthorityCoverage,
+  getContracts,
+  getDocuments,
+  getEvents,
+  getScore,
+  getSpendSummary,
+} from "@/lib/repository";
+import { getBand, getBandColor } from "@/lib/scoring";
+import { formatChange, formatCurrency } from "@/lib/format";
 
-export default function CouncilPage({ params }: { params: { slug: string } }) {
-  const authority = getAuthority(params.slug);
-  if (!authority) return <div className="p-8 text-center text-slate-500">Council not found.</div>;
+export default async function CouncilPage({
+  params,
+}: {
+  params: { slug: string };
+}) {
+  const authority = await getAuthority(params.slug);
 
-  const score = getScore(authority.id);
+  if (!authority) {
+    return <div className="p-8 text-center text-slate-500">Council not found.</div>;
+  }
+
+  const [score, councilEvents, docs, councilContracts, spendSummary, coverage] =
+    await Promise.all([
+      getScore(authority.id),
+      getEvents(authority.id),
+      getDocuments(authority.id),
+      getContracts(authority.id),
+      getSpendSummary(authority.id),
+      getAuthorityCoverage(authority.id),
+    ]);
+
   const band = score ? getBand(score.overall) : null;
-  const bandColor = band ? getBandColor(band) : '';
-  const councilEvents = getEvents(authority.id);
-  const docs = getDocuments(authority.id);
-  const councilContracts = getContracts(authority.id);
-  const spendSummary = getSpendSummary(authority.id);
+  const bandColor = band ? getBandColor(band) : "";
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 px-6 py-4">
-        <Link href="/" className="text-sm text-blue-600 hover:underline">Back to dashboard</Link>
-        <h1 className="text-2xl font-bold text-slate-900 mt-1">{authority.name}</h1>
-        <p className="text-sm text-slate-500">{authority.type} - {authority.region}</p>
+      <header className="border-b border-slate-200 bg-white px-6 py-4">
+        <Link href="/" className="text-sm text-blue-600 hover:underline">
+          Back to dashboard
+        </Link>
+        <h1 className="mt-1 text-2xl font-bold text-slate-900">{authority.name}</h1>
+        <p className="text-sm text-slate-500">
+          {authority.type} - {authority.region}
+        </p>
       </header>
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
-        {score && band && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h2 className="font-bold text-slate-900 mb-4">Stress overview</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div><div className="text-xs text-slate-500">Overall</div><div className="text-2xl font-bold">{score.overall}</div><div className={`text-xs font-semibold ${bandColor}`}>{band}</div></div>
-              <div><div className="text-xs text-slate-500">7d change</div><div className="text-xl font-semibold text-slate-800">{formatChange(score.change7d)}</div></div>
-              <div><div className="text-xs text-slate-500">30d change</div><div className="text-xl font-semibold text-slate-800">{formatChange(score.change30d)}</div></div>
-              <div><div className="text-xs text-slate-500">Borrowing</div><div className="text-xl font-semibold text-slate-800">{score.borrowingIndicator}</div></div>
+
+      <main className="mx-auto max-w-5xl space-y-8 px-6 py-8">
+        {score ? (
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 font-bold text-slate-900">Stress overview</h2>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div>
+                <div className="text-xs text-slate-500">Overall</div>
+                <div className="text-2xl font-bold">{score.overall}</div>
+                <div className={`text-xs font-semibold ${bandColor}`}>{band}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">7d change</div>
+                <div className="text-xl font-semibold text-slate-800">
+                  {formatChange(score.change7d)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">30d change</div>
+                <div className="text-xl font-semibold text-slate-800">
+                  {formatChange(score.change30d)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Borrowing</div>
+                <div className="text-xl font-semibold text-slate-800">
+                  {score.borrowingIndicator}
+                </div>
+              </div>
             </div>
-            {score.interpretation && <p className="mt-4 text-sm text-slate-600">{score.interpretation}</p>}
-          </div>
+
+            <p className="mt-4 text-sm text-slate-600">{score.interpretation}</p>
+          </section>
+        ) : (
+          <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+            No score snapshot yet. Run ingestion to compute one.
+          </section>
         )}
-        {councilEvents.length > 0 && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h2 className="font-bold text-slate-900 mb-4">Recent events</h2>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 font-bold text-slate-900">Coverage</h2>
+          <p className="text-sm text-slate-600">
+            {coverage.length > 0
+              ? coverage.map((item) => `${item.type}: ${item.status}`).join(" • ")
+              : "No active sources configured yet."}
+          </p>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 font-bold text-slate-900">Recent signals</h2>
+
+          {councilEvents.length === 0 ? (
+            <p className="text-sm text-slate-400">No extracted signals yet.</p>
+          ) : (
             <div className="space-y-3">
-              {councilEvents.map(e => (
-                <div key={e.id} className="border-b border-slate-100 pb-3 last:border-0">
-                  <div className="font-medium text-sm text-slate-900">{e.title}</div>
-                  <div className="text-xs text-slate-400">{e.category} - {e.date}</div>
-                  {e.summary && <p className="text-xs text-slate-500 mt-1">{e.summary}</p>}
+              {councilEvents.map((event) => (
+                <div key={event.id} className="border-b border-slate-100 pb-3 last:border-0">
+                  <div className="text-sm font-medium text-slate-900">{event.title}</div>
+                  <div className="text-xs text-slate-400">
+                    {event.category} - {event.date}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{event.summary}</p>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </section>
+
         {spendSummary && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h2 className="font-bold text-slate-900 mb-4">Spend summary</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div><div className="text-xs text-slate-500">Total spend</div><div className="text-xl font-bold">{formatCurrency(spendSummary.totalSpend)}</div></div>
-              <div><div className="text-xs text-slate-500">Capital</div><div className="text-xl font-semibold">{formatCurrency(spendSummary.capitalSpend)}</div></div>
-              <div><div className="text-xs text-slate-500">Revenue</div><div className="text-xl font-semibold">{formatCurrency(spendSummary.revenueSpend)}</div></div>
-              <div><div className="text-xs text-slate-500">Reserves</div><div className="text-xl font-semibold">{formatCurrency(spendSummary.reserves)}</div></div>
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 font-bold text-slate-900">Spend summary</h2>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Metric label="Total spend" value={formatCurrency(spendSummary.totalSpend)} />
+              <Metric label="Capital" value={formatCurrency(spendSummary.capitalSpend)} />
+              <Metric label="Revenue" value={formatCurrency(spendSummary.revenueSpend)} />
+              <Metric label="Reserves" value={formatCurrency(spendSummary.reserves)} />
             </div>
-            <p className="text-xs text-slate-400 mt-2">Period: {spendSummary.period}</p>
-          </div>
+            <p className="mt-2 text-xs text-slate-400">Period: {spendSummary.period}</p>
+          </section>
         )}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="font-bold text-slate-900 mb-4">Source documents</h2>
-          {docs.length === 0 && <p className="text-sm text-slate-400">No documents.</p>}
-          {docs.map(d => (
-            <div key={d.id} className="border-b border-slate-100 pb-3 last:border-0">
-              <div className="font-medium text-sm text-slate-900">{d.title}</div>
-              <div className="text-xs text-slate-400">{d.type} - {d.date}</div>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 font-bold text-slate-900">Source documents</h2>
+
+          {docs.length === 0 ? (
+            <p className="text-sm text-slate-400">No documents.</p>
+          ) : (
+            <div className="space-y-3">
+              {docs.map((doc) => (
+                <div key={doc.id} className="border-b border-slate-100 pb-3 last:border-0">
+                  <div className="text-sm font-medium text-slate-900">{doc.title}</div>
+                  <div className="text-xs text-slate-400">
+                    {doc.type} - {doc.date}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </section>
+
         {councilContracts.length > 0 && (
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h2 className="font-bold text-slate-900 mb-4">Recent procurement</h2>
-            {councilContracts.map(c => (
-              <div key={c.id} className="border-b border-slate-100 pb-3 last:border-0">
-                <div className="font-medium text-sm text-slate-900">{c.title}</div>
-                <div className="text-xs text-slate-400">{c.supplier} - {c.date}</div>
-                <div className="text-sm font-semibold mt-1">{formatCurrency(c.value)}</div>
-              </div>
-            ))}
-          </div>
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 font-bold text-slate-900">Recent procurement</h2>
+            <div className="space-y-3">
+              {councilContracts.map((contract) => (
+                <div
+                  key={contract.id}
+                  className="border-b border-slate-100 pb-3 last:border-0"
+                >
+                  <div className="text-sm font-medium text-slate-900">{contract.title}</div>
+                  <div className="text-xs text-slate-400">
+                    {contract.supplier} - {contract.date}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold">
+                    {formatCurrency(contract.value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </main>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="text-xl font-semibold">{value}</div>
     </div>
   );
 }
