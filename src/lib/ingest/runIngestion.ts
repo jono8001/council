@@ -7,6 +7,14 @@ import { parseSpendCsv } from "@/lib/ingest/parseSpendCsv";
 import { parseSpendXlsx } from "@/lib/ingest/parseSpendXlsx";
 import { scoreAuthority, tallySignalCategories } from "@/lib/ingest/scoreAuthority";
 
+const USER_AGENT =
+  "CouncilFinanceRadar/1.0 (+https://github.com/jono8001/council; transparency research bot)";
+
+const FETCH_HEADERS = {
+  "User-Agent": USER_AGENT,
+  Accept: "*/*",
+};
+
 function detectFormat(url: string): SourceFormat {
   const pathname = new URL(url).pathname.toLowerCase();
   if (pathname.endsWith(".csv")) return SourceFormat.csv;
@@ -17,7 +25,7 @@ function detectFormat(url: string): SourceFormat {
 }
 
 async function fetchBuffer(url: string): Promise<Buffer> {
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: FETCH_HEADERS, redirect: "follow" });
   if (!response.ok) {
     throw new Error(`Failed fetch (${response.status}) for ${url}`);
   }
@@ -27,7 +35,7 @@ async function fetchBuffer(url: string): Promise<Buffer> {
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: FETCH_HEADERS, redirect: "follow" });
   if (!response.ok) {
     throw new Error(`Failed fetch (${response.status}) for ${url}`);
   }
@@ -51,6 +59,8 @@ export async function runIngestion() {
         try {
           const links = await discoverLinks(source.baseUrl);
           const discovered = [...links.spendLinks, ...links.reportLinks, ...links.procurementLinks];
+
+          console.log(`${authority.slug}: discovered ${discovered.length} links from ${source.baseUrl}`);
 
           for (const link of discovered) {
             await db.document.upsert({
@@ -78,18 +88,18 @@ export async function runIngestion() {
         }
       }
 
-      const documents = await db.document.findMany({ where: { authorityId: authority.id } });
+      const documents = await db.document.findMany({
+        where: { authorityId: authority.id },
+      });
 
       for (const document of documents) {
         try {
           if (document.format === SourceFormat.csv) {
             const text = await fetchText(document.url);
             const rows = parseSpendCsv(text);
-
             await db.spendTransaction.deleteMany({
               where: { authorityId: authority.id, sourceUrl: document.url },
             });
-
             for (const row of rows) {
               await db.spendTransaction.create({
                 data: {
@@ -105,14 +115,15 @@ export async function runIngestion() {
             }
           }
 
-          if (document.format === SourceFormat.xlsx || document.format === SourceFormat.xls) {
+          if (
+            document.format === SourceFormat.xlsx ||
+            document.format === SourceFormat.xls
+          ) {
             const buffer = await fetchBuffer(document.url);
             const rows = parseSpendXlsx(buffer);
-
             await db.spendTransaction.deleteMany({
               where: { authorityId: authority.id, sourceUrl: document.url },
             });
-
             for (const row of rows) {
               await db.spendTransaction.create({
                 data: {
@@ -131,18 +142,15 @@ export async function runIngestion() {
           if (document.format === SourceFormat.pdf) {
             const buffer = await fetchBuffer(document.url);
             const extractedText = await parsePdfReport(buffer);
-
             await db.document.update({
               where: { id: document.id },
               data: { extractedText },
             });
 
             const signals = extractSignals(extractedText);
-
             await db.signal.deleteMany({
               where: { authorityId: authority.id, documentId: document.id },
             });
-
             for (const signal of signals) {
               await db.signal.create({
                 data: {
@@ -160,11 +168,17 @@ export async function runIngestion() {
             }
           }
         } catch (error) {
-          errors.push(`${authority.slug}: parsing failed for ${document.url} (${String(error)})`);
+          errors.push(
+            `${authority.slug}: parsing failed for ${document.url} (${String(error)})`,
+          );
         }
       }
 
-      const signals = await db.signal.findMany({ where: { authorityId: authority.id } });
+      // Score authority based on signals
+      const signals = await db.signal.findMany({
+        where: { authorityId: authority.id },
+      });
+
       const scoreBuckets = tallySignalCategories(
         signals.map((signal) => ({ category: signal.category, weight: signal.weight })),
       );
@@ -172,7 +186,8 @@ export async function runIngestion() {
       const score = scoreAuthority({
         ...scoreBuckets,
         hasRecentWarning: signals.some(
-          (signal) => Date.now() - signal.detectedAt.getTime() <= 30 * 24 * 60 * 60 * 1000,
+          (signal) =>
+            Date.now() - signal.detectedAt.getTime() <= 30 * 24 * 60 * 60 * 1000,
         ),
         spendSpike: false,
       });
@@ -195,6 +210,7 @@ export async function runIngestion() {
       });
     }
 
+    // Generate daily briefing
     const topSignals = await db.signal.findMany({
       orderBy: { detectedAt: "desc" },
       take: 6,
@@ -213,7 +229,9 @@ export async function runIngestion() {
           ? `${topSignals[0].authority.name}: ${topSignals[0].title}`
           : "No new high-severity signals detected today",
         body: topSignals.length
-          ? topSignals.map((signal) => `${signal.authority.name}: ${signal.title}`).join("; ")
+          ? topSignals
+              .map((signal) => `${signal.authority.name}: ${signal.title}`)
+              .join("; ")
           : "No signals extracted from configured sources. Add or fix source registry coverage.",
       },
       create: {
@@ -222,7 +240,9 @@ export async function runIngestion() {
           ? `${topSignals[0].authority.name}: ${topSignals[0].title}`
           : "No new high-severity signals detected today",
         body: topSignals.length
-          ? topSignals.map((signal) => `${signal.authority.name}: ${signal.title}`).join("; ")
+          ? topSignals
+              .map((signal) => `${signal.authority.name}: ${signal.title}`)
+              .join("; ")
           : "No signals extracted from configured sources. Add or fix source registry coverage.",
       },
     });
@@ -257,7 +277,6 @@ export async function runIngestion() {
         completedAt: new Date(),
       },
     });
-
     throw error;
   }
 
