@@ -44,10 +44,15 @@ Council Finance Radar is a Next.js 14 app for monitoring English local authority
    ```bash
    npm run prisma:generate
    ```
-5. Run migration:
+5. Run migration (local development):
    ```bash
    npm run prisma:migrate
    ```
+
+For CI/production, use deploy migrations:
+```bash
+npm run prisma:migrate:deploy
+```
 
 ## Seed pilot authorities
 
@@ -95,3 +100,8 @@ Recommended:
 - No install/build/test validation was possible in this environment if npm registry access is blocked.
 - Ingestion currently prioritizes determinism and safety over aggressive scraping breadth.
 - Authorities with partial/no source coverage will still receive low-information score snapshots.
+
+
+## GitHub Actions (recommended)
+
+A workflow is included at `.github/workflows/verify-and-ingest.yml` to verify PRs/pushes and run scheduled ingestion at 04:00 UTC.
