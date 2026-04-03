@@ -90,6 +90,7 @@ model Source {
   updatedAt     DateTime     @updatedAt
   documents     Document[]
 
+  @@unique([authorityId, sourceType])
   @@index([authorityId, sourceType])
 }
 

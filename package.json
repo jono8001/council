@@ -11,7 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "seed:authorities": "tsx scripts/seed-authorities.ts",
     "ingest": "tsx scripts/run-ingestion.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",

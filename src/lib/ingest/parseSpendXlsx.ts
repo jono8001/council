@@ -1,30 +1,45 @@
-import { z } from "zod";
 import * as XLSX from "xlsx";
+import { z } from "zod";
 import { ParsedSpendRow } from "@/lib/ingest/parseSpendCsv";
 
 const xlsxRowSchema = z.object({
-  date: z.coerce.date().nullable(),
+  date: z.date().nullable(),
   supplier: z.string().min(1),
   amount: z.number(),
   serviceArea: z.string().optional(),
   description: z.string().optional(),
 });
 
-export function parseSpendXlsx(buffer: Buffer): ParsedSpendRow[] {
-  const wb = XLSX.read(buffer, { type: "buffer" });
-  const first = wb.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(wb.Sheets[first], { defval: "" });
+function parseDate(input: unknown): Date | null {
+  if (!input) return null;
+  const parsed = new Date(String(input));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
-  return rows.map((r) => {
-    const dateRaw = (r.Date || r.date || r.TransactionDate || "") as string;
-    const supplierRaw = (r.Supplier || r.Payee || "Unknown supplier") as string;
-    const amountRaw = Number(r.Amount || r.Value || r.Expenditure || 0);
-    return xlsxRowSchema.parse({
-      date: dateRaw ? new Date(String(dateRaw)) : null,
-      supplier: String(supplierRaw),
-      amount: Number.isFinite(amountRaw) ? amountRaw : 0,
-      serviceArea: (r.ServiceArea || r.Department || undefined) as string | undefined,
-      description: (r.Description || r.Details || undefined) as string | undefined,
-    });
-  });
+function parseAmount(input: unknown): number {
+  const parsed = Number(String(input ?? 0).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function parseSpendXlsx(buffer: Buffer): ParsedSpendRow[] {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) return [];
+
+  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+    workbook.Sheets[firstSheetName],
+    { defval: "" },
+  );
+
+  return rawRows
+    .map((row) =>
+      xlsxRowSchema.safeParse({
+        date: parseDate(row.Date ?? row.date ?? row.TransactionDate),
+        supplier: String(row.Supplier ?? row.Payee ?? row.Creditor ?? "Unknown supplier"),
+        amount: parseAmount(row.Amount ?? row.Value ?? row.Expenditure),
+        serviceArea: String(row.ServiceArea ?? row.Department ?? "") || undefined,
+        description: String(row.Description ?? row.Details ?? "") || undefined,
+      }),
+    )
+    .flatMap((result) => (result.success ? [result.data] : []));
 }

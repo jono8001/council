@@ -1,98 +1,179 @@
 import { SourceFormat } from "@prisma/client";
 import { db } from "@/lib/db";
 import { discoverLinks } from "@/lib/ingest/discoverLinks";
+import { extractSignals } from "@/lib/ingest/extractSignals";
+import { parsePdfReport } from "@/lib/ingest/parsePdfReport";
 import { parseSpendCsv } from "@/lib/ingest/parseSpendCsv";
 import { parseSpendXlsx } from "@/lib/ingest/parseSpendXlsx";
-import { parsePdfReport } from "@/lib/ingest/parsePdfReport";
-import { extractSignals } from "@/lib/ingest/extractSignals";
 import { scoreAuthority, tallySignalCategories } from "@/lib/ingest/scoreAuthority";
 
-async function fetchBuffer(url: string) {
-  const res = await fetch(url);
-  const arr = await res.arrayBuffer();
-  return Buffer.from(arr);
+function detectFormat(url: string): SourceFormat {
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".csv")) return SourceFormat.csv;
+  if (pathname.endsWith(".xlsx")) return SourceFormat.xlsx;
+  if (pathname.endsWith(".xls")) return SourceFormat.xls;
+  if (pathname.endsWith(".pdf")) return SourceFormat.pdf;
+  return SourceFormat.html;
+}
+
+async function fetchBuffer(url: string): Promise<Buffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed fetch (${response.status}) for ${url}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+async function fetchText(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed fetch (${response.status}) for ${url}`);
+  }
+
+  return response.text();
 }
 
 export async function runIngestion() {
-  const run = await db.ingestionRun.create({ data: {} });
+  const run = await db.ingestionRun.create({ data: { status: "running" } });
   const errors: string[] = [];
 
   try {
     const authorities = await db.authority.findMany({ include: { sources: true } });
+
     for (const authority of authorities) {
-      const activeSources = authority.sources.filter((s) => s.status === "active");
+      const activeSources = authority.sources.filter((source) => source.status === "active");
 
       for (const source of activeSources) {
+        if (source.sourceFormat !== SourceFormat.html) continue;
+
         try {
-          if (source.sourceFormat === "html") {
-            const links = await discoverLinks(source.baseUrl);
-            for (const link of [...links.reportLinks, ...links.spendLinks]) {
-              await db.document.upsert({
-                where: { authorityId_url: { authorityId: authority.id, url: link } },
-                create: {
-                  authorityId: authority.id,
-                  sourceId: source.id,
-                  title: link.split("/").pop() || "Untitled",
-                  url: link,
-                  format: link.endsWith(".pdf") ? "pdf" : link.endsWith(".csv") ? "csv" : link.endsWith(".xlsx") || link.endsWith(".xls") ? "xlsx" : "html",
-                },
-                update: {},
-              });
-            }
+          const links = await discoverLinks(source.baseUrl);
+          const discovered = [...links.spendLinks, ...links.reportLinks, ...links.procurementLinks];
+
+          for (const link of discovered) {
+            await db.document.upsert({
+              where: { authorityId_url: { authorityId: authority.id, url: link } },
+              update: {
+                sourceId: source.id,
+                format: detectFormat(link),
+              },
+              create: {
+                authorityId: authority.id,
+                sourceId: source.id,
+                title: link.split("/").filter(Boolean).pop() ?? "Untitled",
+                url: link,
+                format: detectFormat(link),
+              },
+            });
           }
-        } catch (err) {
-          errors.push(`${authority.slug}: source discovery failed for ${source.baseUrl} (${String(err)})`);
+
+          await db.source.update({
+            where: { id: source.id },
+            data: { lastFetchedAt: new Date() },
+          });
+        } catch (error) {
+          errors.push(`${authority.slug}: discovery failed for ${source.baseUrl} (${String(error)})`);
         }
       }
 
-      const docs = await db.document.findMany({ where: { authorityId: authority.id } });
-      for (const doc of docs) {
+      const documents = await db.document.findMany({ where: { authorityId: authority.id } });
+
+      for (const document of documents) {
         try {
-          if (doc.format === SourceFormat.csv) {
-            const text = await fetch(doc.url).then((r) => r.text());
+          if (document.format === SourceFormat.csv) {
+            const text = await fetchText(document.url);
             const rows = parseSpendCsv(text);
+
+            await db.spendTransaction.deleteMany({
+              where: { authorityId: authority.id, sourceUrl: document.url },
+            });
+
             for (const row of rows) {
-              await db.spendTransaction.create({ data: { authorityId: authority.id, date: row.date, supplier: row.supplier, amount: row.amount, serviceArea: row.serviceArea, description: row.description, sourceUrl: doc.url } });
+              await db.spendTransaction.create({
+                data: {
+                  authorityId: authority.id,
+                  date: row.date,
+                  supplier: row.supplier,
+                  amount: row.amount,
+                  serviceArea: row.serviceArea,
+                  description: row.description,
+                  sourceUrl: document.url,
+                },
+              });
             }
           }
-          if (doc.format === SourceFormat.xlsx || doc.format === SourceFormat.xls) {
-            const buffer = await fetchBuffer(doc.url);
+
+          if (document.format === SourceFormat.xlsx || document.format === SourceFormat.xls) {
+            const buffer = await fetchBuffer(document.url);
             const rows = parseSpendXlsx(buffer);
+
+            await db.spendTransaction.deleteMany({
+              where: { authorityId: authority.id, sourceUrl: document.url },
+            });
+
             for (const row of rows) {
-              await db.spendTransaction.create({ data: { authorityId: authority.id, date: row.date, supplier: row.supplier, amount: row.amount, serviceArea: row.serviceArea, description: row.description, sourceUrl: doc.url } });
+              await db.spendTransaction.create({
+                data: {
+                  authorityId: authority.id,
+                  date: row.date,
+                  supplier: row.supplier,
+                  amount: row.amount,
+                  serviceArea: row.serviceArea,
+                  description: row.description,
+                  sourceUrl: document.url,
+                },
+              });
             }
           }
-          if (doc.format === SourceFormat.pdf) {
-            const buffer = await fetchBuffer(doc.url);
-            const text = await parsePdfReport(buffer);
-            await db.document.update({ where: { id: doc.id }, data: { extractedText: text } });
-            const signals = extractSignals(text);
+
+          if (document.format === SourceFormat.pdf) {
+            const buffer = await fetchBuffer(document.url);
+            const extractedText = await parsePdfReport(buffer);
+
+            await db.document.update({
+              where: { id: document.id },
+              data: { extractedText },
+            });
+
+            const signals = extractSignals(extractedText);
+
+            await db.signal.deleteMany({
+              where: { authorityId: authority.id, documentId: document.id },
+            });
+
             for (const signal of signals) {
               await db.signal.create({
                 data: {
                   authorityId: authority.id,
-                  documentId: doc.id,
+                  documentId: document.id,
                   category: signal.category,
                   severity: signal.severity,
                   title: signal.title,
                   evidenceText: signal.evidenceText,
-                  sourceUrl: doc.url,
+                  sourceUrl: document.url,
                   weight: signal.weight,
                   detectedAt: new Date(),
                 },
               });
             }
           }
-        } catch (err) {
-          errors.push(`${authority.slug}: parsing failed for ${doc.url} (${String(err)})`);
+        } catch (error) {
+          errors.push(`${authority.slug}: parsing failed for ${document.url} (${String(error)})`);
         }
       }
 
-      const latestSignals = await db.signal.findMany({ where: { authorityId: authority.id } });
-      const components = tallySignalCategories(latestSignals.map((s) => ({ category: s.category, weight: s.weight })));
+      const signals = await db.signal.findMany({ where: { authorityId: authority.id } });
+      const scoreBuckets = tallySignalCategories(
+        signals.map((signal) => ({ category: signal.category, weight: signal.weight })),
+      );
+
       const score = scoreAuthority({
-        ...components,
-        hasRecentWarning: latestSignals.some((s) => Date.now() - s.detectedAt.getTime() < 30 * 24 * 60 * 60 * 1000),
+        ...scoreBuckets,
+        hasRecentWarning: signals.some(
+          (signal) => Date.now() - signal.detectedAt.getTime() <= 30 * 24 * 60 * 60 * 1000,
+        ),
         spendSpike: false,
       });
 
@@ -114,36 +195,70 @@ export async function runIngestion() {
       });
     }
 
-    const topSignals = await db.signal.findMany({ orderBy: { detectedAt: "desc" }, take: 6, include: { authority: true } });
+    const topSignals = await db.signal.findMany({
+      orderBy: { detectedAt: "desc" },
+      take: 6,
+      include: { authority: true },
+    });
+
     const today = new Date();
+    const utcDateOnly = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+    );
+
     await db.dailyBriefing.upsert({
-      where: { briefingDate: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) },
-      create: {
-        briefingDate: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())),
-        headline: topSignals.length ? `${topSignals[0].authority.name}: ${topSignals[0].title}` : "No new high-severity signals detected today",
+      where: { briefingDate: utcDateOnly },
+      update: {
+        headline: topSignals.length
+          ? `${topSignals[0].authority.name}: ${topSignals[0].title}`
+          : "No new high-severity signals detected today",
         body: topSignals.length
-          ? topSignals.map((s) => `${s.authority.name}: ${s.title}`).join("; ")
+          ? topSignals.map((signal) => `${signal.authority.name}: ${signal.title}`).join("; ")
           : "No signals extracted from configured sources. Add or fix source registry coverage.",
       },
-      update: {},
+      create: {
+        briefingDate: utcDateOnly,
+        headline: topSignals.length
+          ? `${topSignals[0].authority.name}: ${topSignals[0].title}`
+          : "No new high-severity signals detected today",
+        body: topSignals.length
+          ? topSignals.map((signal) => `${signal.authority.name}: ${signal.title}`).join("; ")
+          : "No signals extracted from configured sources. Add or fix source registry coverage.",
+      },
     });
+
+    const runStats = await Promise.all([
+      db.authority.count(),
+      db.document.count(),
+      db.spendTransaction.count(),
+      db.contractAward.count(),
+      db.signal.count(),
+    ]);
 
     await db.ingestionRun.update({
       where: { id: run.id },
       data: {
         status: errors.length ? "partial" : "success",
-        authoritiesCount: await db.authority.count(),
-        documentsCount: await db.document.count(),
-        spendRowsCount: await db.spendTransaction.count(),
-        contractsCount: await db.contractAward.count(),
-        signalsCount: await db.signal.count(),
+        authoritiesCount: runStats[0],
+        documentsCount: runStats[1],
+        spendRowsCount: runStats[2],
+        contractsCount: runStats[3],
+        signalsCount: runStats[4],
         errors,
         completedAt: new Date(),
       },
     });
-  } catch (err) {
-    await db.ingestionRun.update({ where: { id: run.id }, data: { status: "failed", errors: [String(err)], completedAt: new Date() } });
-    throw err;
+  } catch (error) {
+    await db.ingestionRun.update({
+      where: { id: run.id },
+      data: {
+        status: "failed",
+        errors: [String(error)],
+        completedAt: new Date(),
+      },
+    });
+
+    throw error;
   }
 
   return db.ingestionRun.findUnique({ where: { id: run.id } });
