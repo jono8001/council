@@ -54,8 +54,8 @@ export async function discoverLinks(baseUrl: string): Promise<DiscoveredLinks> {
   });
 
   return discoveredSchema.parse({
-    spendLinks: [...spendLinks],
-    reportLinks: [...reportLinks],
-    procurementLinks: [...procurementLinks],
+        spendLinks: Array.from(spendLinks),
+        reportLinks: Array.from(reportLinks),
+        procurementLinks: Array.from(procurementLinks),
   });
 }

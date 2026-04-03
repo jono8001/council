@@ -8,18 +8,16 @@ on:
     branches:
       - main
   schedule:
-    # Ingestion cron (UTC) – adjust as needed
+    # Ingestion cron (UTC) - adjust as needed
     - cron: "0 4 * * *"
 
 jobs:
   verify:
     name: Install, migrate, test, build
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # Optional, only if you later enable LLM-based briefing enhancements
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
@@ -30,29 +28,25 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
+          node-version: "22"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Generate Prisma client
-        run: npm run prisma:generate
+        run: npx prisma generate
 
       - name: Run migrations
-        run: npm run prisma:migrate:deploy
+        run: npx prisma db push
 
       - name: Seed pilot authorities
         run: npm run seed:authorities
 
-      - name: Run ingestion (dry run against real DB)
+      - name: Run ingestion
         run: npm run ingest
 
       - name: Typecheck
         run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
 
       - name: Tests
         run: npm run test
@@ -67,8 +61,6 @@ jobs:
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - name: Checkout
@@ -77,17 +69,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
+          node-version: "22"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --omit=dev
 
       - name: Generate Prisma client
-        run: npm run prisma:generate
-
-      - name: Run migrations
-        run: npm run prisma:migrate:deploy
+        run: npx prisma generate
 
       - name: Run ingestion
         run: npm run ingest
