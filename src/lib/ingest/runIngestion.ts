@@ -11,8 +11,9 @@ const USER_AGENT =
   "CouncilFinanceRadar/1.0 (+https://github.com/jono8001/council; transparency research bot)";
 
 const FETCH_TIMEOUT_MS = 30_000; // 30 seconds per fetch
-const MAX_DOCS_PER_AUTHORITY = 20; // Limit documents parsed per authority to keep CI fast
+const MAX_DOCS_PER_AUTHORITY = 3; // Limit documents parsed per authority to keep CI fast
 const MAX_DISCOVERED_LINKS = 50; // Limit discovered links stored per source
+const MAX_ROWS_PER_CSV = 500; // Cap spend rows per CSV to keep CI fast
 
 function detectFormat(url: string): SourceFormat {
   const pathname = new URL(url).pathname.toLowerCase();
@@ -118,7 +119,7 @@ export async function runIngestion() {
         try {
           if (document.format === SourceFormat.csv) {
             const text = await fetchText(document.url);
-            const rows = parseSpendCsv(text);
+            const rows = parseSpendCsv(text).slice(0, MAX_ROWS_PER_CSV);
             await db.spendTransaction.deleteMany({
               where: { authorityId: authority.id, sourceUrl: document.url },
             });
@@ -140,7 +141,7 @@ export async function runIngestion() {
 
           if (document.format === SourceFormat.xlsx || document.format === SourceFormat.xls) {
             const buffer = await fetchBuffer(document.url);
-            const rows = parseSpendXlsx(buffer);
+            const rows = parseSpendXlsx(buffer).slice(0, MAX_ROWS_PER_CSV);
             await db.spendTransaction.deleteMany({
               where: { authorityId: authority.id, sourceUrl: document.url },
             });
