@@ -73,7 +73,58 @@ const pilotAuthorities = [
   },
 ] as const;
 
-async function upsertSource(authorityId: string, sourceType: "transparency" | "finance_reports", baseUrl: string) {
+// Verified transparency and finance report source URLs per authority.
+// Each transparency URL should be an HTML page containing links to
+// downloadable spend data (CSV/XLSX/PDF). The finance_reports URL
+// should be a page linking to budget or audit reports.
+const sourceUrls: Record<string, { transparency: string; financeReports: string }> = {
+  birmingham: {
+    transparency: "https://www.birmingham.gov.uk/info/20215/corporate_procurement_services/517/invoicing_the_council/5",
+    financeReports: "https://www.birmingham.gov.uk/info/20011/your_council/952/open_data",
+  },
+  thurrock: {
+    transparency: "https://www.thurrock.gov.uk/what-we-spend/payments-to-suppliers",
+    financeReports: "https://www.thurrock.gov.uk/what-we-publish/local-government-transparency-code",
+  },
+  croydon: {
+    transparency: "https://www.croydon.gov.uk/council-and-elections/budgets-and-spending/accounts-and-payments/payments-over-ps500",
+    financeReports: "https://www.croydon.gov.uk/council-and-elections/budgets-and-spending",
+  },
+  woking: {
+    transparency: "https://www.woking.gov.uk/council-and-democracy/transparency-and-open-data",
+    financeReports: "https://www.woking.gov.uk/council-and-democracy/council-finance",
+  },
+  slough: {
+    transparency: "https://www.slough.gov.uk/downloads/download/206/payments-to-suppliers-over-500",
+    financeReports: "https://www.slough.gov.uk/performance-spending",
+  },
+  nottingham: {
+    transparency: "https://www.nottinghamcity.gov.uk/your-council/about-the-council/access-to-information/nottingham-data-hub",
+    financeReports: "https://www.nottinghamcity.gov.uk/your-council/about-the-council/access-to-information/nottingham-data-hub",
+  },
+  somerset: {
+    transparency: "https://www.somerset.gov.uk/finance-performance-and-legal/council-expenditure-over-500/",
+    financeReports: "https://www.somerset.gov.uk/finance-performance-and-legal/",
+  },
+  "north-northamptonshire": {
+    transparency: "https://www.northnorthants.gov.uk/finance/expenditure",
+    financeReports: "https://www.northnorthants.gov.uk/your-council/transparency-and-open-data",
+  },
+  "west-berkshire": {
+    transparency: "https://www.westberks.gov.uk/expenditure-over-500",
+    financeReports: "https://www.westberks.gov.uk/article/40313/Where-the-council-s-money-comes-from-and-how-it-s-spent",
+  },
+  "east-riding": {
+    transparency: "https://www.eastriding.gov.uk/council/governance-and-spending/budgets-and-spending/council-spending-and-salaries",
+    financeReports: "https://www.eastriding.gov.uk/council/governance-and-spending/budgets-and-spending",
+  },
+};
+
+async function upsertSource(
+  authorityId: string,
+  sourceType: "transparency" | "finance_reports",
+  baseUrl: string,
+) {
   return db.source.upsert({
     where: {
       authorityId_sourceType: {
@@ -106,22 +157,17 @@ async function main() {
       create: authority,
     });
 
-    // TODO: Replace templated endpoints with validated, authority-specific publication URLs.
-    await upsertSource(
-      created.id,
-      "transparency",
-      `${authority.officialUrl}/transparency/spend-over-500/`,
-    );
+    const urls = sourceUrls[authority.slug];
+    if (!urls) {
+      console.warn(`No source URLs configured for ${authority.slug}, skipping sources.`);
+      continue;
+    }
 
-    // TODO: Replace templated endpoints with validated finance report index URLs.
-    await upsertSource(
-      created.id,
-      "finance_reports",
-      `${authority.officialUrl}/council-and-democracy/finance-and-budget/`,
-    );
+    await upsertSource(created.id, "transparency", urls.transparency);
+    await upsertSource(created.id, "finance_reports", urls.financeReports);
   }
 
-  console.log(`Seeded ${pilotAuthorities.length} authorities and source registry entries.`);
+  console.log(`Seeded ${pilotAuthorities.length} authorities with verified source URLs.`);
 }
 
 main()
