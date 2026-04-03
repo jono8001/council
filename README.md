@@ -1,77 +1,30 @@
-# Council Budget Transparency
+# Council Finance Radar
 
-An open-source project to provide transparency into UK local council budgets, helping residents understand how public money is spent.
+A public-signal stress index for English local authorities. Phase 1 MVP with seeded data.
 
-## Overview
+## Pages
 
-This tool collects, processes, and visualises council budget data to make it accessible and understandable for everyone.
-
-## Features
-
-- Council budget data collection and processing
-- Interactive budget visualisations
-- Historical spending comparisons
-- Search and filter by council, category, or time period
-- Open data exports
+- **Today** (`/`) - Dashboard with stress overview, watchlist alerts, and briefing
+- **Watchlist** (`/watchlist`) - Authorities on watch with key indicators
+- **Council** (`/council/[slug]`) - Detailed view per authority
+- **Methodology** (`/methodology`) - How scores are calculated
 
 ## Tech Stack
 
-- **Backend:** Python
-- **Data Processing:** Pandas
-- **Frontend:** HTML/CSS/JavaScript
-- **Database:** Firebase
+- Next.js 14 (App Router)
+- TypeScript
+- Tailwind CSS
+- Seeded data (no live APIs in Phase 1)
 
 ## Getting Started
 
-### Prerequisites
-
-- Python 3.10+
-- Node.js 18+ (for frontend)
-- Firebase account
-
-### Installation
-
 ```bash
-git clone https://github.com/jono8001/council.git
-cd council
-pip install -r requirements.txt
+npm install
+npm run dev
 ```
 
-### Environment Variables
+Open http://localhost:3000
 
-Create a `.env` file in the root directory:
+## Important
 
-```
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_API_KEY=your-api-key
-```
-
-### Run
-
-```bash
-python main.py
-```
-
-## Project Structure
-
-```
-council/
-├── src/              # Source code
-│   ├── scrapers/     # Data collection scripts
-│   ├── processing/   # Data cleaning and transformation
-│   └── api/          # API endpoints
-├── frontend/         # Web frontend
-├── data/             # Raw and processed data
-├── tests/            # Test files
-├── .env.example      # Environment variable template
-├── requirements.txt  # Python dependencies
-└── README.md
-```
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
-
-## Licence
-
-MIT License
+This is a public-signal stress index, not an insolvency predictor. It does not imply live bank balances. England only.
