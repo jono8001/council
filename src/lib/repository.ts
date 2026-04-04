@@ -59,7 +59,7 @@ function humaniseEvent(event: FinanceEvent, authorityName: string): FinanceEvent
   // Build a public-friendly title
   let publicTitle = event.title;
   if (cat === "structural" || cat === "outturn") {
-    publicTitle = "New annual finance update added";
+    publicTitle = "Latest annual finance record on this site";
   } else if (/baseline/i.test(cat)) {
     publicTitle = "Budget baseline data added";
   } else if (/variance/i.test(cat)) {
@@ -68,9 +68,10 @@ function humaniseEvent(event: FinanceEvent, authorityName: string): FinanceEvent
 
   // Build a public-friendly summary, always including the authority name
   let publicSummary: string;
-  if (/Grants in:|Grants out:|Net:/i.test(event.summary)) {
-    publicSummary =
-      `${friendlyName} \u2014 This gives a plain-English year-end update on the council\u2019s longer-term financial position. Source published ${event.date}; added to the site today.`;
+  if (cat === "structural" || cat === "outturn") {
+    publicSummary = `${friendlyName} \u2014 Background context from the latest annual finance record held on this site, not same-day news. Source published ${event.date}.`;
+  } else if (/Grants in:|Grants out:|Net:/i.test(event.summary)) {
+    publicSummary = `${friendlyName} \u2014 Background context from an annual finance record, not same-day news. Source published ${event.date}.`;
   } else if (/outturn|structural|baseline|variance/i.test(event.summary)) {
     const cleaned = event.summary
       .replace(/\boutturn\b/gi, "year-end spending report")
@@ -132,13 +133,19 @@ export async function getAllScores(): Promise<AuthorityScore[]> {
   return [...grouped.entries()].map(([authorityId, snapshots]) => {
     const latest = snapshots[0];
     const snapshot7d = snapshots.find(
-      (row) => latest.recordedAt.getTime() - row.recordedAt.getTime() >= 7 * 24 * 60 * 60 * 1000,
+      (row) =>
+        latest.recordedAt.getTime() - row.recordedAt.getTime() >=
+        7 * 24 * 60 * 60 * 1000,
     );
     const snapshot30d = snapshots.find(
-      (row) => latest.recordedAt.getTime() - row.recordedAt.getTime() >= 30 * 24 * 60 * 60 * 1000,
+      (row) =>
+        latest.recordedAt.getTime() - row.recordedAt.getTime() >=
+        30 * 24 * 60 * 60 * 1000,
     );
+
     const change7d = snapshot7d ? latest.overall - snapshot7d.overall : 0;
     const change30d = snapshot30d ? latest.overall - snapshot30d.overall : 0;
+
     return {
       authorityId,
       overall: latest.overall,
@@ -177,6 +184,7 @@ export async function getEvents(authorityId?: string): Promise<FinanceEvent[]> {
     db.authority.findMany({ select: { id: true, name: true } }),
   ]);
   const authorityMap = new Map(authorities.map((a) => [a.id, a.name]));
+
   return rows.map((row) => {
     const raw: FinanceEvent = {
       id: row.id,
@@ -204,7 +212,8 @@ export async function getDocuments(authorityId?: string): Promise<Document[]> {
     title: row.title,
     type: row.format,
     date:
-      row.publicationDate?.toISOString().slice(0, 10) ?? row.createdAt.toISOString().slice(0, 10),
+      row.publicationDate?.toISOString().slice(0, 10) ??
+      row.createdAt.toISOString().slice(0, 10),
     url: row.url,
   }));
 }
@@ -220,7 +229,9 @@ export async function getContracts(authorityId?: string): Promise<Contract[]> {
     title: row.title,
     supplier: row.supplier,
     value: safeNumber(row.value),
-    date: row.awardedAt?.toISOString().slice(0, 10) ?? row.createdAt.toISOString().slice(0, 10),
+    date:
+      row.awardedAt?.toISOString().slice(0, 10) ??
+      row.createdAt.toISOString().slice(0, 10),
   }));
 }
 
@@ -273,18 +284,20 @@ export async function getDailyBriefing() {
 
 export async function getTopStats() {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [authoritiesMonitored, newContracts, scores, spendAggregate] = await Promise.all([
-    db.authority.count(),
-    db.contractAward.count({ where: { awardedAt: { gte: thirtyDaysAgo } } }),
-    getAllScores(),
-    db.spendTransaction.aggregate({ _sum: { amount: true } }),
-  ]);
+  const [authoritiesMonitored, newContracts, scores, spendAggregate] =
+    await Promise.all([
+      db.authority.count(),
+      db.contractAward.count({ where: { awardedAt: { gte: thirtyDaysAgo } } }),
+      getAllScores(),
+      db.spendTransaction.aggregate({ _sum: { amount: true } }),
+    ]);
   return {
     trackedSpend: safeNumber(spendAggregate._sum.amount),
     authoritiesMonitored,
     newContracts,
-    onWatchlist: scores.filter((score) => score.band === "Critical" || score.band === "Elevated")
-      .length,
+    onWatchlist: scores.filter(
+      (score) => score.band === "Critical" || score.band === "Elevated",
+    ).length,
   };
 }
 

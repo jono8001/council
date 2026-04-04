@@ -35,6 +35,18 @@ export default async function CouncilPage({
   const band = score ? getBand(score.overall) : null;
   const bandColor = band ? getBandColor(band) : "";
 
+  const limitedCoverage =
+    coverage.length === 0 ||
+    !coverage.some((item) => {
+      const type = (item.type ?? "").toLowerCase();
+      return /quarter|monitor|statement|local|document/.test(type);
+    });
+
+  const annualBaselineSource = coverage.find((item) => {
+    const type = (item.type ?? "").toLowerCase();
+    return item.baseUrl && /annual|baseline|finance/.test(type);
+  });
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white px-6 py-4">
@@ -50,64 +62,55 @@ export default async function CouncilPage({
       <main className="mx-auto max-w-5xl space-y-8 px-6 py-8">
         {score ? (
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 font-bold text-slate-900">Stress overview</h2>
+            <h2 className="mb-4 font-bold text-slate-900">Watch assessment</h2>
+
+            {limitedCoverage && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p>Preliminary view — based mainly on annual central-government finance data.</p>
+                <p className="mt-1 font-medium">Confidence: Limited</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div>
                 <div className="text-xs text-slate-500">Overall</div>
                 <div className="text-2xl font-bold">{score.overall}</div>
                 <div className={`text-xs font-semibold ${bandColor}`}>{band}</div>
               </div>
-              <div>
-                <div className="text-xs text-slate-500">7d change</div>
-                <div className="text-xl font-semibold text-slate-800">
-                  {formatChange(score.change7d)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">30d change</div>
-                <div className="text-xl font-semibold text-slate-800">
-                  {formatChange(score.change30d)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">Borrowing</div>
-                <div className="text-xl font-semibold text-slate-800">
-                  {score.borrowingIndicator}
-                </div>
-              </div>
+              <Metric label="7d change" value={formatChange(score.change7d)} />
+              <Metric label="30d change" value={formatChange(score.change30d)} />
+              <Metric label="Borrowing" value={score.borrowingIndicator} />
             </div>
-
             <p className="mt-4 text-sm text-slate-600">{score.interpretation}</p>
           </section>
         ) : (
-          <section className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+          <p className="text-sm text-slate-400">
             No score snapshot yet. Run ingestion to compute one.
-          </section>
+          </p>
         )}
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 font-bold text-slate-900">Coverage</h2>
           <p className="text-sm text-slate-600">
             {coverage.length > 0
-              ? coverage.map((item) => `${item.type}: ${item.status}`).join(" • ")
+              ? coverage.map((item) => `${item.type}: ${item.status}`).join(" \u2022 ")
               : "No active sources configured yet."}
           </p>
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 font-bold text-slate-900">Recent signals</h2>
-
           {councilEvents.length === 0 ? (
             <p className="text-sm text-slate-400">No extracted signals yet.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {councilEvents.map((event) => (
-                <div key={event.id} className="border-b border-slate-100 pb-3 last:border-0">
-                  <div className="text-sm font-medium text-slate-900">{event.title}</div>
+                <div key={event.id} className="border-b border-slate-100 pb-4 last:border-0">
+                  <div className="font-medium text-slate-900">{event.title}</div>
                   <div className="text-xs text-slate-400">
                     {event.category} - {event.date}
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{event.summary}</p>
+                  <p className="mt-1 text-sm text-slate-600">{event.summary}</p>
                 </div>
               ))}
             </div>
@@ -117,21 +120,30 @@ export default async function CouncilPage({
         {spendSummary && (
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 font-bold text-slate-900">Spend summary</h2>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <Metric label="Total spend" value={formatCurrency(spendSummary.totalSpend)} />
-              <Metric label="Capital" value={formatCurrency(spendSummary.capitalSpend)} />
-              <Metric label="Revenue" value={formatCurrency(spendSummary.revenueSpend)} />
-              <Metric label="Reserves" value={formatCurrency(spendSummary.reserves)} />
-            </div>
-            <p className="mt-2 text-xs text-slate-400">Period: {spendSummary.period}</p>
+            <p className="text-sm text-slate-500">Period: {spendSummary.period}</p>
           </section>
         )}
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 font-bold text-slate-900">Source documents</h2>
-
           {docs.length === 0 ? (
-            <p className="text-sm text-slate-400">No documents.</p>
+            annualBaselineSource?.baseUrl ? (
+              <div className="text-sm text-slate-500">
+                <span className="font-medium text-slate-700">
+                  National annual source: GOV.UK / MHCLG annual finance record
+                </span>{" "}
+                <a
+                  href={annualBaselineSource.baseUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  Open source document
+                </a>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">No documents.</p>
+            )
           ) : (
             <div className="space-y-3">
               {docs.map((doc) => (
@@ -140,6 +152,16 @@ export default async function CouncilPage({
                   <div className="text-xs text-slate-400">
                     {doc.type} - {doc.date}
                   </div>
+                  {doc.url && (
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-block text-sm text-blue-600 hover:underline"
+                    >
+                      Open source document
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
@@ -149,22 +171,17 @@ export default async function CouncilPage({
         {councilContracts.length > 0 && (
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 font-bold text-slate-900">Recent procurement</h2>
-            <div className="space-y-3">
-              {councilContracts.map((contract) => (
-                <div
-                  key={contract.id}
-                  className="border-b border-slate-100 pb-3 last:border-0"
-                >
-                  <div className="text-sm font-medium text-slate-900">{contract.title}</div>
-                  <div className="text-xs text-slate-400">
-                    {contract.supplier} - {contract.date}
-                  </div>
-                  <div className="mt-1 text-sm font-semibold">
-                    {formatCurrency(contract.value)}
-                  </div>
+            {councilContracts.map((contract) => (
+              <div key={contract.id} className="border-b border-slate-100 pb-3 last:border-0">
+                <div className="text-sm font-medium text-slate-900">{contract.title}</div>
+                <div className="text-xs text-slate-400">
+                  {contract.supplier} - {contract.date}
                 </div>
-              ))}
-            </div>
+                <div className="text-sm font-semibold text-slate-700">
+                  {formatCurrency(contract.value)}
+                </div>
+              </div>
+            ))}
           </section>
         )}
       </main>
@@ -176,7 +193,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-xs text-slate-500">{label}</div>
-      <div className="text-xl font-semibold">{value}</div>
+      <div className="text-lg font-semibold">{value}</div>
     </div>
   );
 }
