@@ -48,7 +48,6 @@ export default async function HomePage() {
               Not a live bank balance. Not an insolvency predictor. A transparent
               monitoring layer built from public data.
             </p>
-
             <div className="mt-6 grid grid-cols-3 gap-4">
               <div className="rounded-xl bg-slate-800 p-4">
                 <div className="text-2xl font-bold">{criticalCount}</div>
@@ -64,7 +63,6 @@ export default async function HomePage() {
               </div>
             </div>
           </div>
-
           <div className="rounded-xl bg-slate-800 p-6">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
               National Watch
@@ -77,17 +75,14 @@ export default async function HomePage() {
 
       <section className="mx-auto mt-8 grid max-w-7xl gap-6 px-4 md:grid-cols-3">
         <div className="md:col-span-2">
-          <h2 className="mb-4 text-lg font-bold text-slate-900">What changed today</h2>
+          <h2 className="mb-4 text-lg font-bold text-slate-900">Added to the site today</h2>
           <div className="space-y-3">
             {events.length === 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                No new extracted events yet. Run ingestion and confirm source coverage.
+                No new items yet. Check back after the next data refresh.
               </div>
             )}
-
             {events.slice(0, 4).map((event) => {
-              const authority = authorities.find((item) => item.id === event.authorityId);
-
               return (
                 <div
                   key={event.id}
@@ -109,7 +104,7 @@ export default async function HomePage() {
                   </div>
                   <h3 className="font-semibold text-slate-900">{event.title}</h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    {authority?.name ?? "Unknown authority"} &mdash; {event.summary}
+                    {event.summary}
                   </p>
                 </div>
               );
@@ -130,10 +125,9 @@ export default async function HomePage() {
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-900">National league table</h2>
             <Link href="/watchlist" className="text-sm text-blue-600 hover:underline">
-              View full watchlist &rarr;
+              View full watchlist →
             </Link>
           </div>
-
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead>
@@ -151,7 +145,6 @@ export default async function HomePage() {
                   .sort((a, b) => b.overall - a.overall)
                   .map((score) => {
                     const authority = authorities.find((item) => item.id === score.authorityId);
-
                     return (
                       <tr key={score.authorityId} className="transition-colors hover:bg-slate-50">
                         <td className="px-4 py-3">
@@ -198,7 +191,7 @@ export default async function HomePage() {
       <section className="mx-auto mb-6 mt-10 max-w-7xl px-4">
         <div className="rounded-2xl bg-slate-900 p-8 text-white">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-            Daily Briefing &mdash; {briefing.date}
+            Daily Briefing — {briefing.date}
           </h2>
           <h3 className="mt-2 text-xl font-bold">{briefing.headline}</h3>
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">{briefing.body}</p>
