@@ -45,6 +45,9 @@ jobs:
       - name: Run ingestion
         run: npm run ingest
 
+      - name: Run MHCLG bulk ingestion
+        run: npx tsx scripts/ingest-mhclg.ts
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -77,5 +80,11 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Seed pilot authorities
+        run: npx tsx scripts/seed-authorities.ts
+
       - name: Run ingestion
         run: npm run ingest
+
+      - name: Run MHCLG bulk ingestion
+        run: npx tsx scripts/ingest-mhclg.ts
