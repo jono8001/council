@@ -27,25 +27,82 @@ function formatRelativeTime(date?: Date | null): string {
   return `${days} day${days > 1 ? "s" : ""} ago`;
 }
 
+/** Map internal category codes to plain-English labels for the public homepage. */
+const CATEGORY_LABELS: Record<string, string> = {
+  structural: "Annual finance update",
+  outturn: "Year-end spending report",
+  baseline: "Budget baseline update",
+  variance: "Budget versus actual",
+};
+
+/** Strip jargon abbreviations from authority names. */
+function friendlyAuthorityName(name: string): string {
+  return name
+    .replace(/\bUA\b/, "Council")
+    .replace(/\bMD\b/, "Council")
+    .replace(/\bLB\b/, "London Borough Council")
+    .replace(/\bCC\b/, "County Council");
+}
+
+/**
+ * Rewrite a raw finance event into plain public English.
+ * This keeps the read-model layer responsible for presentation
+ * without touching ingestion or schema.
+ */
+function humaniseEvent(event: FinanceEvent, authorityName: string): FinanceEvent {
+  const cat = (event.category ?? "").toLowerCase();
+  const friendlyName = friendlyAuthorityName(authorityName);
+
+  // Replace category with public label
+  const publicCategory = CATEGORY_LABELS[cat] ?? event.category;
+
+  // Build a public-friendly title
+  let publicTitle = event.title;
+  if (cat === "structural" || cat === "outturn") {
+    publicTitle = "New annual finance update added";
+  } else if (/baseline/i.test(cat)) {
+    publicTitle = "Budget baseline data added";
+  } else if (/variance/i.test(cat)) {
+    publicTitle = "New budget-versus-actual comparison added";
+  }
+
+  // Build a public-friendly summary, replacing raw grant/net figures
+  let publicSummary = event.summary;
+  if (/Grants in:|Grants out:|Net:/i.test(publicSummary)) {
+    publicSummary =
+      `${friendlyName} \u2014 This gives a plain-English year-end update on the council\u2019s longer-term financial position. Source published ${event.date}; added to the site today.`;
+  } else if (/outturn|structural|baseline|variance/i.test(publicSummary)) {
+    publicSummary = publicSummary
+      .replace(/\boutturn\b/gi, "year-end spending report")
+      .replace(/\bstructural\b/gi, "longer-term financial position")
+      .replace(/\bbaseline\b/gi, "budget starting point")
+      .replace(/\bvariance\b/gi, "difference from the planned budget");
+  }
+
+  return {
+    ...event,
+    category: publicCategory,
+    title: publicTitle,
+    summary: publicSummary,
+  };
+}
+
 async function getLatestSnapshotsByAuthority() {
   const rows = await db.scoreSnapshot.findMany({
     orderBy: { recordedAt: "desc" },
     take: 1000,
   });
-
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const existing = grouped.get(row.authorityId) ?? [];
     existing.push(row);
     grouped.set(row.authorityId, existing);
   }
-
   return grouped;
 }
 
 export async function getAllAuthorities(): Promise<Authority[]> {
   const rows = await db.authority.findMany({ orderBy: { name: "asc" } });
-
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
@@ -58,7 +115,6 @@ export async function getAllAuthorities(): Promise<Authority[]> {
 export async function getAuthority(slug: string): Promise<Authority | undefined> {
   const row = await db.authority.findUnique({ where: { slug } });
   if (!row) return undefined;
-
   return {
     id: row.id,
     name: row.name,
@@ -70,20 +126,16 @@ export async function getAuthority(slug: string): Promise<Authority | undefined>
 
 export async function getAllScores(): Promise<AuthorityScore[]> {
   const grouped = await getLatestSnapshotsByAuthority();
-
   return [...grouped.entries()].map(([authorityId, snapshots]) => {
     const latest = snapshots[0];
-
     const snapshot7d = snapshots.find(
       (row) => latest.recordedAt.getTime() - row.recordedAt.getTime() >= 7 * 24 * 60 * 60 * 1000,
     );
     const snapshot30d = snapshots.find(
       (row) => latest.recordedAt.getTime() - row.recordedAt.getTime() >= 30 * 24 * 60 * 60 * 1000,
     );
-
     const change7d = snapshot7d ? latest.overall - snapshot7d.overall : 0;
     const change30d = snapshot30d ? latest.overall - snapshot30d.overall : 0;
-
     return {
       authorityId,
       overall: latest.overall,
@@ -113,21 +165,28 @@ export async function getScore(authorityId: string): Promise<AuthorityScore | un
 }
 
 export async function getEvents(authorityId?: string): Promise<FinanceEvent[]> {
-  const rows = await db.signal.findMany({
-    where: authorityId ? { authorityId } : undefined,
-    orderBy: { detectedAt: "desc" },
-    take: 50,
+  const [rows, authorities] = await Promise.all([
+    db.signal.findMany({
+      where: authorityId ? { authorityId } : undefined,
+      orderBy: { detectedAt: "desc" },
+      take: 50,
+    }),
+    db.authority.findMany({ select: { id: true, name: true } }),
+  ]);
+  const authorityMap = new Map(authorities.map((a) => [a.id, a.name]));
+  return rows.map((row) => {
+    const raw: FinanceEvent = {
+      id: row.id,
+      authorityId: row.authorityId,
+      date: row.detectedAt.toISOString().slice(0, 10),
+      title: row.title,
+      category: row.category,
+      severity: row.severity,
+      summary: row.evidenceText,
+    };
+    const name = authorityMap.get(row.authorityId) ?? "Unknown authority";
+    return humaniseEvent(raw, name);
   });
-
-  return rows.map((row) => ({
-    id: row.id,
-    authorityId: row.authorityId,
-    date: row.detectedAt.toISOString().slice(0, 10),
-    title: row.title,
-    category: row.category,
-    severity: row.severity,
-    summary: row.evidenceText,
-  }));
 }
 
 export async function getDocuments(authorityId?: string): Promise<Document[]> {
@@ -136,7 +195,6 @@ export async function getDocuments(authorityId?: string): Promise<Document[]> {
     orderBy: [{ publicationDate: "desc" }, { createdAt: "desc" }],
     take: 100,
   });
-
   return rows.map((row) => ({
     id: row.id,
     authorityId: row.authorityId,
@@ -153,7 +211,6 @@ export async function getContracts(authorityId?: string): Promise<Contract[]> {
     where: authorityId ? { authorityId } : undefined,
     orderBy: [{ awardedAt: "desc" }, { createdAt: "desc" }],
   });
-
   return rows.map((row) => ({
     id: row.id,
     authorityId: row.authorityId,
@@ -170,11 +227,8 @@ export async function getSpendSummary(authorityId: string): Promise<SpendSummary
     _sum: { amount: true },
     _count: { id: true },
   });
-
   if (!aggregate._count.id) return undefined;
-
   const total = safeNumber(aggregate._sum.amount);
-
   return {
     authorityId,
     totalSpend: total,
@@ -192,7 +246,6 @@ export async function getTrend(authorityId: string): Promise<TrendPoint[]> {
     orderBy: { recordedAt: "asc" },
     take: 12,
   });
-
   return rows.map((row) => ({
     date: row.recordedAt.toISOString().slice(0, 7),
     score: row.overall,
@@ -201,7 +254,6 @@ export async function getTrend(authorityId: string): Promise<TrendPoint[]> {
 
 export async function getDailyBriefing() {
   const row = await db.dailyBriefing.findFirst({ orderBy: { briefingDate: "desc" } });
-
   if (!row) {
     return {
       date: "No briefing yet",
@@ -209,7 +261,6 @@ export async function getDailyBriefing() {
       body: "Run ingestion after seeding sources to generate a public-signal briefing.",
     };
   }
-
   return {
     date: row.briefingDate.toISOString().slice(0, 10),
     headline: row.headline,
@@ -219,14 +270,12 @@ export async function getDailyBriefing() {
 
 export async function getTopStats() {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
   const [authoritiesMonitored, newContracts, scores, spendAggregate] = await Promise.all([
     db.authority.count(),
     db.contractAward.count({ where: { awardedAt: { gte: thirtyDaysAgo } } }),
     getAllScores(),
     db.spendTransaction.aggregate({ _sum: { amount: true } }),
   ]);
-
   return {
     trackedSpend: safeNumber(spendAggregate._sum.amount),
     authoritiesMonitored,
@@ -241,7 +290,6 @@ export async function getAuthorityCoverage(authorityId: string) {
     where: { authorityId },
     orderBy: { sourceType: "asc" },
   });
-
   return rows.map((row) => ({
     type: row.sourceType,
     status: row.status,
