@@ -35,10 +35,14 @@ function parseAmount(val: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-function parseCSV(text: string): Record<string, string>[] {
+function parseCSV(rawText: string): Record<string, string>[] {
+  // Strip BOM and normalize line endings
+  const text = rawText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = text.split("\n");
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim());
+  // Strip BOM and quotes from headers
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").replace(/^\uFEFF/, ""));
+  console.log(`CSV headers (first 5): ${headers.slice(0, 5).join(", ")}`);
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -46,7 +50,7 @@ function parseCSV(text: string): Record<string, string>[] {
     const values = line.split(",");
     const row: Record<string, string> = {};
     for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = (values[j] || "").trim();
+      row[headers[j]] = (values[j] || "").trim().replace(/^"|"$/g, "");
     }
     rows.push(row);
   }
@@ -67,25 +71,41 @@ async function main() {
   const records = parseCSV(text);
   console.log(`Parsed ${records.length} rows`);
 
+  // Debug: show first record keys and sample
+  if (records.length > 0) {
+    const first = records[0];
+    console.log(`First record keys: ${Object.keys(first).slice(0, 8).join(", ")}`);
+    console.log(`First record status='${first.status}', LA_name='${first.LA_name}', year='${first.year_ending}'`);
+  }
+
   const authorities = await prisma.authority.findMany();
   const slugMap = new Map(authorities.map((a) => [a.slug, a]));
-  console.log(`${authorities.length} authorities in DB`);
+  console.log(`${authorities.length} authorities in DB: ${authorities.map((a) => a.slug).join(", ")}`);
 
+  // Filter to individual councils (skip total rows)
   let rows = records.filter(
     (r) =>
       r.status === "submitted" &&
       r.ONS_code &&
       !/^E\d{2}$/.test(r.ONS_code)
   );
+  console.log(`After status filter: ${rows.length} rows (from ${records.length})`);
 
-  if (LATEST_YEAR_ONLY) {
-    const years = [...new Set(rows.map((r) => r.year_ending))].sort();
+  if (LATEST_YEAR_ONLY && rows.length > 0) {
+    const years = [...new Set(rows.map((r) => r.year_ending).filter(Boolean))].sort();
     const latest = years[years.length - 1];
+    console.log(`Available years: ${years.join(", ")}`);
     console.log(`Filtering to latest year: ${latest}`);
     rows = rows.filter((r) => r.year_ending === latest);
   }
 
   console.log(`Processing ${rows.length} council-year rows`);
+
+  // Debug: show first 3 slugs being tried
+  for (const row of rows.slice(0, 3)) {
+    const slug = slugify(row.LA_name || "");
+    console.log(`Trying: '${row.LA_name}' -> slug '${slug}' -> match: ${slugMap.has(slug)}`);
+  }
 
   let matched = 0;
   let signalsCreated = 0;
