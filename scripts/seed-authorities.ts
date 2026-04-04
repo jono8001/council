@@ -4,6 +4,7 @@ const pilotAuthorities = [
   {
     name: "Birmingham City Council",
     slug: "birmingham",
+    onsCode: "E08000025",
     type: "Metropolitan Borough",
     region: "West Midlands",
     officialUrl: "https://www.birmingham.gov.uk",
@@ -11,6 +12,7 @@ const pilotAuthorities = [
   {
     name: "Thurrock Council",
     slug: "thurrock",
+    onsCode: "E06000034",
     type: "Unitary Authority",
     region: "East of England",
     officialUrl: "https://www.thurrock.gov.uk",
@@ -18,6 +20,7 @@ const pilotAuthorities = [
   {
     name: "London Borough of Croydon",
     slug: "croydon",
+    onsCode: "E09000008",
     type: "London Borough",
     region: "London",
     officialUrl: "https://www.croydon.gov.uk",
@@ -25,6 +28,7 @@ const pilotAuthorities = [
   {
     name: "Woking Borough Council",
     slug: "woking",
+    onsCode: "E07000217",
     type: "District",
     region: "South East",
     officialUrl: "https://www.woking.gov.uk",
@@ -32,6 +36,7 @@ const pilotAuthorities = [
   {
     name: "Slough Borough Council",
     slug: "slough",
+    onsCode: "E06000039",
     type: "Unitary Authority",
     region: "South East",
     officialUrl: "https://www.slough.gov.uk",
@@ -39,6 +44,7 @@ const pilotAuthorities = [
   {
     name: "Nottingham City Council",
     slug: "nottingham",
+    onsCode: "E06000018",
     type: "Unitary Authority",
     region: "East Midlands",
     officialUrl: "https://www.nottinghamcity.gov.uk",
@@ -46,6 +52,7 @@ const pilotAuthorities = [
   {
     name: "Somerset Council",
     slug: "somerset",
+    onsCode: "E06000066",
     type: "Unitary Authority",
     region: "South West",
     officialUrl: "https://www.somerset.gov.uk",
@@ -53,6 +60,7 @@ const pilotAuthorities = [
   {
     name: "North Northamptonshire Council",
     slug: "north-northamptonshire",
+    onsCode: "E06000061",
     type: "Unitary Authority",
     region: "East Midlands",
     officialUrl: "https://www.northnorthants.gov.uk",
@@ -60,6 +68,7 @@ const pilotAuthorities = [
   {
     name: "West Berkshire Council",
     slug: "west-berkshire",
+    onsCode: "E06000037",
     type: "Unitary Authority",
     region: "South East",
     officialUrl: "https://www.westberks.gov.uk",
@@ -67,6 +76,7 @@ const pilotAuthorities = [
   {
     name: "East Riding of Yorkshire Council",
     slug: "east-riding",
+    onsCode: "E06000011",
     type: "Unitary Authority",
     region: "Yorkshire and the Humber",
     officialUrl: "https://www.eastriding.gov.uk",
@@ -74,9 +84,6 @@ const pilotAuthorities = [
 ] as const;
 
 // Verified transparency and finance report source URLs per authority.
-// Each transparency URL should be an HTML page containing links to
-// downloadable spend data (CSV/XLSX/PDF). The finance_reports URL
-// should be a page linking to budget or audit reports.
 const sourceUrls: Record<string, { transparency: string; financeReports: string }> = {
   birmingham: {
     transparency: "https://www.birmingham.gov.uk/info/20215/corporate_procurement_services/517/invoicing_the_council/5",
@@ -153,8 +160,21 @@ async function main() {
   for (const authority of pilotAuthorities) {
     const created = await db.authority.upsert({
       where: { slug: authority.slug },
-      update: authority,
-      create: authority,
+      update: {
+        name: authority.name,
+        onsCode: authority.onsCode,
+        type: authority.type,
+        region: authority.region,
+        officialUrl: authority.officialUrl,
+      },
+      create: {
+        name: authority.name,
+        slug: authority.slug,
+        onsCode: authority.onsCode,
+        type: authority.type,
+        region: authority.region,
+        officialUrl: authority.officialUrl,
+      },
     });
 
     const urls = sourceUrls[authority.slug];
@@ -166,8 +186,7 @@ async function main() {
     await upsertSource(created.id, "transparency", urls.transparency);
     await upsertSource(created.id, "finance_reports", urls.financeReports);
   }
-
-  console.log(`Seeded ${pilotAuthorities.length} authorities with verified source URLs.`);
+  console.log(`Seeded ${pilotAuthorities.length} pilot authorities with ONS codes and source URLs.`);
 }
 
 main()
