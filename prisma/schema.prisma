@@ -57,23 +57,24 @@ enum IngestionStatus {
 }
 
 model Authority {
-  id                String            @id @default(cuid())
-  name              String
-  slug              String            @unique
-  type              String
-  region            String
-  officialUrl       String?
-  coverageNote      String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  sources           Source[]
-  documents         Document[]
-  spendTransactions SpendTransaction[]
-  contractAwards    ContractAward[]
-  signals           Signal[]
-  scoreSnapshots    ScoreSnapshot[]
-
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  onsCode            String?  @unique
+  type               String
+  region             String
+  officialUrl        String?
+  coverageNote       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  sources            Source[]
+  documents          Document[]
+  spendTransactions  SpendTransaction[]
+  contractAwards     ContractAward[]
+  signals            Signal[]
+  scoreSnapshots     ScoreSnapshot[]
   @@index([slug])
+  @@index([onsCode])
 }
 
 model Source {
@@ -89,55 +90,52 @@ model Source {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   documents     Document[]
-
   @@unique([authorityId, sourceType])
   @@index([authorityId, sourceType])
 }
 
 model Document {
-  id              String      @id @default(cuid())
+  id              String       @id @default(cuid())
   authorityId     String
-  authority       Authority   @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  authority       Authority    @relation(fields: [authorityId], references: [id], onDelete: Cascade)
   sourceId        String?
-  source          Source?     @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  source          Source?      @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   title           String
   url             String
   publicationDate DateTime?
   format          SourceFormat
   extractedText   String?
   checksum        String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   signals         Signal[]
-
   @@unique([authorityId, url])
 }
 
 model SpendTransaction {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   authorityId String
   authority   Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
   date        DateTime?
   supplier    String
-  amount      Decimal  @db.Decimal(14, 2)
+  amount      Decimal   @db.Decimal(14, 2)
   serviceArea String?
   description String?
   sourceUrl   String?
-  createdAt   DateTime @default(now())
-
+  createdAt   DateTime  @default(now())
   @@index([authorityId, date])
 }
 
 model ContractAward {
-  id            String   @id @default(cuid())
-  authorityId    String
-  authority      Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
-  title         String
-  supplier      String
-  value         Decimal  @db.Decimal(14, 2)
-  awardedAt     DateTime?
-  sourceUrl     String?
-  createdAt     DateTime @default(now())
+  id          String    @id @default(cuid())
+  authorityId String
+  authority   Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  title       String
+  supplier    String
+  value       Decimal   @db.Decimal(14, 2)
+  awardedAt   DateTime?
+  sourceUrl   String?
+  createdAt   DateTime  @default(now())
 }
 
 model Signal {
@@ -154,45 +152,44 @@ model Signal {
   weight       Int
   detectedAt   DateTime
   createdAt    DateTime       @default(now())
-
   @@index([authorityId, detectedAt])
 }
 
 model ScoreSnapshot {
-  id                     String   @id @default(cuid())
-  authorityId            String
-  authority              Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
-  structural             Int
-  currentWarning         Int
-  spendPattern           Int
-  procurement            Int
-  governanceHistory      Int
-  overall                Int
-  band                   Band
-  explanation            String
-  borrowingIndicator     String
-  reservesSignal         String
-  publicationStatus      String
-  recordedAt             DateTime @default(now())
+  id                  String   @id @default(cuid())
+  authorityId         String
+  authority           Authority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  structural          Int
+  currentWarning      Int
+  spendPattern        Int
+  procurement         Int
+  governanceHistory   Int
+  overall             Int
+  band                Band
+  explanation         String
+  borrowingIndicator  String
+  reservesSignal      String
+  publicationStatus   String
+  recordedAt          DateTime @default(now())
 }
 
 model DailyBriefing {
-  id          String   @id @default(cuid())
+  id           String   @id @default(cuid())
   briefingDate DateTime @unique
-  headline    String
-  body        String
-  createdAt   DateTime @default(now())
+  headline     String
+  body         String
+  createdAt    DateTime @default(now())
 }
 
 model IngestionRun {
-  id                 String          @id @default(cuid())
-  status             IngestionStatus @default(running)
-  authoritiesCount   Int             @default(0)
-  documentsCount     Int             @default(0)
-  spendRowsCount     Int             @default(0)
-  contractsCount     Int             @default(0)
-  signalsCount       Int             @default(0)
-  errors             Json?
-  startedAt          DateTime        @default(now())
-  completedAt        DateTime?
+  id               String          @id @default(cuid())
+  status           IngestionStatus @default(running)
+  authoritiesCount Int             @default(0)
+  documentsCount   Int             @default(0)
+  spendRowsCount   Int             @default(0)
+  contractsCount   Int             @default(0)
+  signalsCount     Int             @default(0)
+  errors           Json?
+  startedAt        DateTime        @default(now())
+  completedAt      DateTime?
 }
