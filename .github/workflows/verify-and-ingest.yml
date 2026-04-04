@@ -42,9 +42,6 @@ jobs:
       - name: Seed pilot authorities
         run: npm run seed:authorities
 
-      - name: Run ingestion
-        run: npm run ingest
-
       - name: Run MHCLG bulk ingestion
         run: npx tsx scripts/ingest-mhclg.ts
 
@@ -85,9 +82,6 @@ jobs:
 
       - name: Seed pilot authorities
         run: npx tsx scripts/seed-authorities.ts
-
-      - name: Run ingestion
-        run: npm run ingest
 
       - name: Run MHCLG bulk ingestion
         run: npx tsx scripts/ingest-mhclg.ts
