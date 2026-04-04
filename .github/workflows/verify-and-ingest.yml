@@ -37,7 +37,7 @@ jobs:
         run: npx prisma generate
 
       - name: Run migrations
-        run: npx prisma db push
+        run: npx prisma db push --accept-data-loss
 
       - name: Seed pilot authorities
         run: npm run seed:authorities
@@ -79,6 +79,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Run migrations
+        run: npx prisma db push --accept-data-loss
 
       - name: Seed pilot authorities
         run: npx tsx scripts/seed-authorities.ts
