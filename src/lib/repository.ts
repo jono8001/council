@@ -66,17 +66,20 @@ function humaniseEvent(event: FinanceEvent, authorityName: string): FinanceEvent
     publicTitle = "New budget-versus-actual comparison added";
   }
 
-  // Build a public-friendly summary, replacing raw grant/net figures
-  let publicSummary = event.summary;
-  if (/Grants in:|Grants out:|Net:/i.test(publicSummary)) {
+  // Build a public-friendly summary, always including the authority name
+  let publicSummary: string;
+  if (/Grants in:|Grants out:|Net:/i.test(event.summary)) {
     publicSummary =
       `${friendlyName} \u2014 This gives a plain-English year-end update on the council\u2019s longer-term financial position. Source published ${event.date}; added to the site today.`;
-  } else if (/outturn|structural|baseline|variance/i.test(publicSummary)) {
-    publicSummary = publicSummary
+  } else if (/outturn|structural|baseline|variance/i.test(event.summary)) {
+    const cleaned = event.summary
       .replace(/\boutturn\b/gi, "year-end spending report")
       .replace(/\bstructural\b/gi, "longer-term financial position")
       .replace(/\bbaseline\b/gi, "budget starting point")
       .replace(/\bvariance\b/gi, "difference from the planned budget");
+    publicSummary = `${friendlyName} \u2014 ${cleaned}`;
+  } else {
+    publicSummary = `${friendlyName} \u2014 ${event.summary}`;
   }
 
   return {
