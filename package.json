@@ -11,6 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "seed:authorities": "tsx scripts/seed-authorities.ts",
     "ingest": "tsx scripts/run-ingestion.ts",
+    "ingest:mhclg": "tsx scripts/ingest-mhclg.ts",
+    "ingest:annual": "tsx scripts/ingest-mhclg.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prisma:migrate:deploy": "prisma migrate deploy"
