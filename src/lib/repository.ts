@@ -315,3 +315,28 @@ export async function getAuthorityCoverage(authorityId: string) {
     baseUrl: row.baseUrl,
   }));
 }
+
+export async function getIngestionStatus(): Promise<{
+  latestRunDate: string;
+  status: string;
+  summary: string;
+}> {
+  const row = await db.ingestionRun.findFirst({
+    orderBy: { startedAt: "desc" },
+  }).catch(() => null);
+
+  if (!row) {
+    return {
+      latestRunDate: "No ingestion run recorded yet",
+      status: "pending",
+      summary:
+        "No automated ingestion has completed. Coverage relies on seed data and annual central-government records.",
+    };
+  }
+
+  return {
+    latestRunDate: row.startedAt.toISOString().slice(0, 10),
+    status: row.status ?? "unknown",
+    summary: `Last ingestion run: ${row.startedAt.toISOString().slice(0, 10)} (${row.status ?? "unknown"}).`,
+  };
+}
