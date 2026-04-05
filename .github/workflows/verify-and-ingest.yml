@@ -1,0 +1,111 @@
+name: Verify council app and run ingestion
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Ingestion cron (UTC) – adjust as needed
+    - cron: "0 4 * * *"
+
+jobs:
+  verify:
+    name: Install, migrate, test, build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Optional, only if you later enable LLM-based briefing enhancements
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run migrations
+        run: npm run prisma:migrate:deploy
+
+      - name: Seed pilot authorities
+        run: npm run seed:authorities
+
+      - name: Ingest annual baseline evidence (placeholder-backed)
+        run: npm run ingest:annual
+
+      - name: Ingest quarterly update evidence (placeholder-backed)
+        run: npm run ingest:quarterly
+
+      - name: Ingest local spend-over-£500 evidence
+        run: npm run ingest
+
+      - name: Build composite watch snapshots
+        run: npm run build:composite
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm run test
+
+      - name: Build Next app
+        run: npm run build
+
+  scheduled-ingestion:
+    name: Scheduled ingestion
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run migrations
+        run: npm run prisma:migrate:deploy
+
+      - name: Ingest annual baseline evidence (placeholder-backed)
+        run: npm run ingest:annual
+
+      - name: Ingest quarterly update evidence (placeholder-backed)
+        run: npm run ingest:quarterly
+
+      - name: Ingest local spend-over-£500 evidence
+        run: npm run ingest
+
+      - name: Build composite watch snapshots
+        run: npm run build:composite

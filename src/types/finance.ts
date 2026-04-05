@@ -32,6 +32,7 @@ export interface FinanceEvent {
   category: string;
   severity: string;
   summary: string;
+  sourceUrl?: string;
 }
 
 export interface Document {
@@ -65,4 +66,53 @@ export interface SpendSummary {
 export interface TrendPoint {
   date: string;
   score: number;
+}
+
+export interface AnnualBaselineEvidence {
+  financialYear: string;
+  netRevenueBudget?: number;
+  reservesLevel?: number;
+  debtLevel?: number;
+  asOfDate: string;
+  sourceUrl?: string;
+  coverageStatus: string;
+  confidenceScore?: number;
+  freshnessDays?: number;
+  explanation: string;
+}
+
+export interface QuarterlyEvidence {
+  financialYear: string;
+  quarter: number;
+  budgetToDate?: number;
+  outturnToDate?: number;
+  varianceToDate?: number;
+  asOfDate: string;
+  sourceUrl?: string;
+  coverageStatus: string;
+  confidenceScore?: number;
+  freshnessDays?: number;
+  explanation: string;
+}
+
+export interface WatchAssessment {
+  overall: number;
+  band: StressBand;
+  publicationStatus: string;
+  coverageStatus: string;
+  confidenceScore?: number;
+  freshnessDays?: number;
+  explanation: string;
+  caveat: string;
+}
+
+export interface AuthorityPublicReadModel {
+  authorityId: string;
+  latestAnnualBaseline?: AnnualBaselineEvidence;
+  latestQuarterlyPosition?: QuarterlyEvidence;
+  latestLocalSpendPublicationDate?: string;
+  evidenceChangeEvents: FinanceEvent[];
+  sourceDocuments: Document[];
+  watchAssessment?: WatchAssessment;
+  caveats: string[];
 }
