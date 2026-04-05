@@ -5,17 +5,19 @@ import {
   getDailyBriefing,
   getEvents,
   getTopStats,
+    getIngestionStatus,
 } from "@/lib/repository";
 import { formatChange, formatCurrency } from "@/lib/format";
 import { getBandColor, getBandDot } from "@/lib/scoring";
 
 export default async function HomePage() {
-  const [scores, authorities, events, stats, briefing] = await Promise.all([
+    const [scores, authorities, events, stats, briefing, ingestionStatus] = await Promise.all([
     getAllScores(),
     getAllAuthorities(),
     getEvents(),
     getTopStats(),
     getDailyBriefing(),
+              getIngestionStatus(),
   ]);
 
   const criticalCount = scores.filter((score) => score.band === "Critical").length;
@@ -185,6 +187,25 @@ export default async function HomePage() {
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+            <section className="mx-auto mb-6 mt-6 max-w-7xl px-4">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600 leading-relaxed">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            Coverage &amp; freshness
+          </h2>
+          <p>
+            Coverage is still expanding. Some councils currently rely mainly on
+            annual central-government data (e.g. MHCLG revenue account and
+            capital outturn returns) rather than locally published documents.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            {ingestionStatus.summary}{" "}
+            {ingestionStatus.status !== "pending" && (
+              <span>Last run: {ingestionStatus.latestRunDate}.</span>
+            )}
+          </p>
         </div>
       </section>
 
