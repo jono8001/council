@@ -243,6 +243,8 @@ export async function getSpendSummary(authorityId: string): Promise<SpendSummary
   });
   if (!aggregate._count.id) return undefined;
   const total = safeNumber(aggregate._sum.amount);
+  // Suppress misleading zero-like spend summaries
+  if (total === 0) return undefined;
   return {
     authorityId,
     totalSpend: total,
