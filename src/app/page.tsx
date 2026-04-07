@@ -4,20 +4,20 @@ import {
   getAllScores,
   getDailyBriefing,
   getEvents,
+  getIngestionStatus,
   getTopStats,
-    getIngestionStatus,
 } from "@/lib/repository";
 import { formatChange, formatCurrency } from "@/lib/format";
 import { getBandColor, getBandDot } from "@/lib/scoring";
 
 export default async function HomePage() {
-    const [scores, authorities, events, stats, briefing, ingestionStatus] = await Promise.all([
+  const [scores, authorities, events, stats, briefing, ingestionStatus] = await Promise.all([
     getAllScores(),
     getAllAuthorities(),
     getEvents(),
     getTopStats(),
     getDailyBriefing(),
-              getIngestionStatus(),
+    getIngestionStatus(),
   ]);
 
   const criticalCount = scores.filter((score) => score.band === "Critical").length;
@@ -61,52 +61,54 @@ export default async function HomePage() {
               </div>
               <div className="rounded-xl bg-slate-800 p-4">
                 <div className="text-2xl font-bold">{events.length}</div>
-                <div className="mt-1 text-xs text-slate-400">New signals today</div>
+                <div className="mt-1 text-xs text-slate-400">Evidence items added today</div>
               </div>
             </div>
           </div>
-          <div className="rounded-xl bg-slate-800 p-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-              National Watch
-            </h3>
-            <p className="mt-3 text-sm leading-relaxed text-slate-300">{briefing.headline}</p>
-            <p className="mt-2 text-xs text-slate-400">{briefing.date}</p>
+          <div className="flex flex-col justify-center">
+            <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
+                National Watch
+              </h2>
+              <p className="mt-2 text-lg font-bold">{briefing.headline}</p>
+              <p className="mt-1 text-xs text-slate-400">{briefing.date}</p>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="mx-auto mt-8 grid max-w-7xl gap-6 px-4 md:grid-cols-3">
         <div className="md:col-span-2">
-          <h2 className="mb-4 text-lg font-bold text-slate-900">Added to the site today</h2>
+          <h2 className="mb-4 text-lg font-bold text-slate-900">Latest evidence added</h2>
           <div className="space-y-3">
             {events.length === 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
                 No new items yet. Check back after the next data refresh.
               </div>
             )}
+
             {events.slice(0, 4).map((event) => {
+              const authority = authorities.find((item) => item.id === event.authorityId);
+              const summaryPreview = event.summary.split(". ").slice(0, 3).join(". ");
+
               return (
                 <div
                   key={event.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
                 >
-                  <div className="mb-1 flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        event.severity === "high"
-                          ? "bg-red-50 text-red-700"
-                          : event.severity === "medium"
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
                       {event.category}
                     </span>
-                    <span className="text-xs text-slate-400">{event.date}</span>
+                    <span className="text-slate-400">&middot;</span>
+                    <span className="text-slate-500">{event.date}</span>
                   </div>
                   <h3 className="font-semibold text-slate-900">{event.title}</h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    {event.summary}
+                    <span className="font-medium text-slate-700">
+                      {authority?.name ?? "Unknown authority"}
+                    </span>{" "}
+                    &mdash; {summaryPreview}
                   </p>
                 </div>
               );
@@ -122,75 +124,71 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto mt-10 grid max-w-7xl gap-6 px-4 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-slate-900">National league table</h2>
-            <Link href="/watchlist" className="text-sm text-blue-600 hover:underline">
-              View full watchlist →
-            </Link>
-          </div>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wider text-slate-500">
-                  <th className="px-4 py-3">Authority</th>
-                  <th className="px-4 py-3">Stress</th>
-                  <th className="px-4 py-3">Borrowing</th>
-                  <th className="px-4 py-3">7d</th>
-                  <th className="px-4 py-3">Refresh</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {scores
-                  .slice()
-                  .sort((a, b) => b.overall - a.overall)
-                  .map((score) => {
-                    const authority = authorities.find((item) => item.id === score.authorityId);
-                    return (
-                      <tr key={score.authorityId} className="transition-colors hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <Link
-                            href={`/council/${authority?.slug}`}
-                            className="font-medium text-slate-900 hover:text-blue-600"
-                          >
-                            {authority?.name}
-                          </Link>
-                          <div className="text-xs text-slate-400">{authority?.type}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getBandColor(score.band)}`}
-                          >
-                            <span className={`h-1.5 w-1.5 rounded-full ${getBandDot(score.band)}`} />
-                            {score.overall} {score.band}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-slate-600">{score.borrowingIndicator}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`text-xs font-medium ${
-                              score.change7d > 0
-                                ? "text-red-600"
-                                : score.change7d < 0
-                                  ? "text-green-600"
-                                  : "text-slate-400"
-                            }`}
-                          >
-                            {formatChange(score.change7d)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-slate-400">{score.latestRefresh}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
+      <section className="mx-auto mt-10 max-w-7xl px-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-lg font-bold text-slate-900">National league table</h2>
+          <Link
+            href="/watchlist"
+            className="text-sm font-medium text-blue-600 hover:underline"
+          >
+            View full watchlist &rarr;
+          </Link>
+        </div>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Authority</th>
+                <th className="px-4 py-3">Stress</th>
+                <th className="px-4 py-3">Borrowing</th>
+                <th className="px-4 py-3">7d</th>
+                <th className="px-4 py-3">Refresh</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {scores
+                .slice()
+                .sort((a, b) => b.overall - a.overall)
+                .map((score) => {
+                  const authority = authorities.find((item) => item.id === score.authorityId);
+                  return (
+                    <tr key={score.authorityId} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/council/${authority?.slug}`}
+                          className="font-medium text-blue-700 hover:underline"
+                        >
+                          {authority?.name}
+                        </Link>
+                        <span className="ml-1 text-xs text-slate-400">{authority?.type}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block h-2 w-2 rounded-full ${getBandDot(score.band)}`} />
+                        <span className="ml-1">{score.overall}</span>
+                        <span className={`ml-1 text-xs ${getBandColor(score.band)}`}>{score.band}</span>
+                      </td>
+                      <td className="px-4 py-3">{score.borrowingIndicator}</td>
+                      <td
+                        className={`px-4 py-3 ${
+                          score.change7d > 0
+                            ? "text-red-600"
+                            : score.change7d < 0
+                              ? "text-green-600"
+                              : "text-slate-400"
+                        }`}
+                      >
+                        {formatChange(score.change7d)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{score.latestRefresh}</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
         </div>
       </section>
 
-            <section className="mx-auto mb-6 mt-6 max-w-7xl px-4">
+      <section className="mx-auto mb-6 mt-6 max-w-7xl px-4">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600 leading-relaxed">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
             Coverage &amp; freshness
@@ -212,10 +210,10 @@ export default async function HomePage() {
       <section className="mx-auto mb-6 mt-10 max-w-7xl px-4">
         <div className="rounded-2xl bg-slate-900 p-8 text-white">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-            Daily Briefing — {briefing.date}
+            Daily Briefing &mdash; {briefing.date}
           </h2>
           <h3 className="mt-2 text-xl font-bold">{briefing.headline}</h3>
-          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">{briefing.body}</p>
+          <p className="mt-3 text-slate-300">{briefing.body}</p>
         </div>
       </section>
     </div>
@@ -226,7 +224,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="mt-1 text-sm text-slate-500">{label}</div>
+      <div className="mt-1 text-xs text-slate-500">{label}</div>
     </div>
   );
 }

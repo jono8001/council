@@ -319,6 +319,8 @@ export async function getAuthorityCoverage(authorityId: string) {
 export async function getIngestionStatus(): Promise<{
   latestRunDate: string;
   status: string;
+  
+  
   summary: string;
 }> {
   const row = await db.ingestionRun.findFirst({
