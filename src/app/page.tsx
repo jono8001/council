@@ -4,7 +4,6 @@ import {
   getAllScores,
   getDailyBriefing,
   getEvents,
-  getHomepageCoverageSnapshot,
   getIngestionStatus,
   getTopStats,
 } from "@/lib/repository";
@@ -12,14 +11,13 @@ import { formatChange, formatCurrency } from "@/lib/format";
 import { getBandColor, getBandDot } from "@/lib/scoring";
 
 export default async function HomePage() {
-  const [scores, authorities, events, stats, briefing, ingestionStatus, coverageSnapshot] = await Promise.all([
+  const [scores, authorities, events, stats, briefing, ingestionStatus] = await Promise.all([
     getAllScores(),
     getAllAuthorities(),
     getEvents(),
     getTopStats(),
     getDailyBriefing(),
     getIngestionStatus(),
-    getHomepageCoverageSnapshot(),
   ]);
 
   const criticalCount = scores.filter((score) => score.band === "Critical").length;
@@ -124,18 +122,6 @@ export default async function HomePage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-sm font-semibold text-slate-900">Coverage snapshot</div>
-            <p className="mt-1 text-xs text-slate-500">
-              Coverage is expanding; some councils currently rely mainly on annual central-government evidence.
-            </p>
-            <div className="mt-3 space-y-1 text-xs text-slate-600">
-              <div>Annual context: {coverageSnapshot.annualContextCount}/{coverageSnapshot.authoritiesTotal}</div>
-              <div>Quarterly updates: {coverageSnapshot.quarterlyCoverageCount}/{coverageSnapshot.authoritiesTotal}</div>
-              <div>Local spend source docs: {coverageSnapshot.localSpendCoverageCount}/{coverageSnapshot.authoritiesTotal}</div>
-              <div>Councils with limited depth: {coverageSnapshot.limitedCoverageCount}</div>
-            </div>
-          </div>
           <StatCard label="Tracked spend from parsed data" value={formatCurrency(stats.trackedSpend)} />
           <StatCard label="Authorities monitored" value={String(stats.authoritiesMonitored)} />
           <StatCard label="New contract awards" value={String(stats.newContracts)} />
