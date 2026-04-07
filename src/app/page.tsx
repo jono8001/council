@@ -110,11 +110,6 @@ export default async function HomePage() {
                     </span>{" "}
                     &mdash; {summaryPreview}
                   </p>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-                    <span>
-                      {event.sourceUrl ? "Source link available" : "Source link not yet available"}
-                    </span>
-                  </div>
                 </div>
               );
             })}
