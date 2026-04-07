@@ -1,4 +1,4 @@
-import { Prisma, DataLayer } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   Authority,
@@ -316,42 +316,6 @@ export async function getAuthorityCoverage(authorityId: string) {
   }));
 }
 
-export async function getHomepageCoverageSnapshot() {
-  const [authoritiesTotal, annualAuthorities, quarterlyAuthorities, localSpendAuthorities] =
-    await Promise.all([
-      db.authority.count(),
-      db.annualBaselineSnapshot.findMany({
-        distinct: ["authorityId"],
-        select: { authorityId: true },
-      }),
-      db.quarterlyPositionSnapshot.findMany({
-        distinct: ["authorityId"],
-        select: { authorityId: true },
-      }),
-      db.document.findMany({
-        where: { layer: DataLayer.local_spend },
-        distinct: ["authorityId"],
-        select: { authorityId: true },
-      }),
-    ]);
-
-  const annualSet = new Set(annualAuthorities.map((row) => row.authorityId));
-  const quarterlySet = new Set(quarterlyAuthorities.map((row) => row.authorityId));
-  const localSet = new Set(localSpendAuthorities.map((row) => row.authorityId));
-
-  let limitedCoverage = 0;
-  for (const authorityId of annualSet) {
-    if (!quarterlySet.has(authorityId) || !localSet.has(authorityId)) limitedCoverage += 1;
-  }
-
-  return {
-    authoritiesTotal,
-    annualContextCount: annualSet.size,
-    quarterlyCoverageCount: quarterlySet.size,
-    localSpendCoverageCount: localSet.size,
-    limitedCoverageCount: limitedCoverage,
-  };
-}
 export async function getIngestionStatus(): Promise<{
   latestRunDate: string;
   status: string;
