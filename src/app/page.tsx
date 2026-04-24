@@ -1,230 +1,172 @@
+"use client";
+
 import Link from "next/link";
-import {
-  getAllAuthorities,
-  getAllScores,
-  getDailyBriefing,
-  getEvents,
-  getIngestionStatus,
-  getTopStats,
-} from "@/lib/repository";
-import { formatChange, formatCurrency } from "@/lib/format";
-import { getBandColor, getBandDot } from "@/lib/scoring";
+import { FormEvent, useMemo, useState } from "react";
 
-export default async function HomePage() {
-  const [scores, authorities, events, stats, briefing, ingestionStatus] = await Promise.all([
-    getAllScores(),
-    getAllAuthorities(),
-    getEvents(),
-    getTopStats(),
-    getDailyBriefing(),
-    getIngestionStatus(),
-  ]);
+type ResultRow = {
+  rank: number;
+  competitorId: string;
+  name: string;
+  address: string;
+  distanceMiles: number;
+  category?: string;
+  googleRating?: number;
+  googleReviewCount?: number;
+  threatScore: number;
+  threatLabel: string;
+  confidence: string;
+  lastUpdated: string;
+  delivery: { uber_eats: number | null; just_eat: number | null; deliveroo: number | null };
+};
 
-  const criticalCount = scores.filter((score) => score.band === "Critical").length;
-  const elevatedCount = scores.filter((score) => score.band === "Elevated").length;
+const radiusOptions = [0.5, 1, 2, 3, 5];
+
+export default function HomePage() {
+  const [query, setQuery] = useState("");
+  const [radiusMiles, setRadiusMiles] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mcdLabel, setMcdLabel] = useState<string>("");
+  const [rows, setRows] = useState<ResultRow[]>([]);
+  const [sortBy, setSortBy] = useState<"rank" | "distance" | "google" | "threat">("rank");
+  const [csvText, setCsvText] = useState("");
+
+  const sortedRows = useMemo(() => {
+    const out = [...rows];
+    if (sortBy === "distance") out.sort((a, b) => a.distanceMiles - b.distanceMiles);
+    if (sortBy === "google") out.sort((a, b) => (b.googleRating ?? 0) - (a.googleRating ?? 0));
+    if (sortBy === "threat") out.sort((a, b) => b.threatScore - a.threatScore);
+    if (sortBy === "rank") out.sort((a, b) => a.rank - b.rank);
+    return out;
+  }, [rows, sortBy]);
+
+  async function onSearch(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, radiusMiles }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Search failed");
+      setMcdLabel(`${json.mcdonaldsLocation.name} — ${json.mcdonaldsLocation.address}`);
+      setRows(json.competitors);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function importCsv() {
+    const response = await fetch("/api/import/csv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv: csvText }),
+    });
+    const json = await response.json();
+    alert(response.ok ? `Imported ${json.matched}/${json.processed} rows` : json.error);
+  }
+
+  async function refresh(competitorId: string) {
+    await fetch(`/api/competitors/${competitorId}/refresh`, { method: "POST" });
+    alert("Refreshed Google data. Run search again to update ranking.");
+  }
 
   return (
-    <div>
-      <div className="mx-auto flex max-w-7xl gap-3 px-4 pt-6">
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-          Production data pipeline
-        </span>
-        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-          England-first public data monitor
-        </span>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-          Refreshed from ingestion runs
-        </span>
-      </div>
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-3xl font-bold">McDonald’s Local Competitor Radar</h1>
+        <p className="mt-2 text-sm text-slate-600">Search a McDonald’s store and rank nearby food competitors in plain English.</p>
+      </header>
 
-      <section className="mx-4 mt-4 max-w-7xl rounded-2xl bg-slate-900 p-8 text-white sm:mx-auto sm:p-12">
-        <div className="grid gap-8 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Council Finance Radar</h1>
-            <p className="mt-3 max-w-2xl text-lg text-slate-300">
-              A daily public-signal monitor for council spend, debt, risk language, and
-              financial stress across England. Built from treasury reports, spend files,
-              borrowing data, and procurement records.
-            </p>
-            <p className="mt-2 text-sm text-slate-400">
-              Not a live bank balance. Not an insolvency predictor. A transparent
-              monitoring layer built from public data.
-            </p>
-            <div className="mt-6 grid grid-cols-3 gap-4">
-              <div className="rounded-xl bg-slate-800 p-4">
-                <div className="text-2xl font-bold">{criticalCount}</div>
-                <div className="mt-1 text-xs text-slate-400">Critical stress</div>
-              </div>
-              <div className="rounded-xl bg-slate-800 p-4">
-                <div className="text-2xl font-bold">{elevatedCount}</div>
-                <div className="mt-1 text-xs text-slate-400">Elevated stress</div>
-              </div>
-              <div className="rounded-xl bg-slate-800 p-4">
-                <div className="text-2xl font-bold">{events.length}</div>
-                <div className="mt-1 text-xs text-slate-400">Evidence items added today</div>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col justify-center">
-            <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-                National Watch
-              </h2>
-              <p className="mt-2 text-lg font-bold">{briefing.headline}</p>
-              <p className="mt-1 text-xs text-slate-400">{briefing.date}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto mt-8 grid max-w-7xl gap-6 px-4 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <h2 className="mb-4 text-lg font-bold text-slate-900">Latest evidence added</h2>
-          <div className="space-y-3">
-            {events.length === 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                No new items yet. Check back after the next data refresh.
-              </div>
-            )}
-
-            {events.slice(0, 4).map((event) => {
-              const authority = authorities.find((item) => item.id === event.authorityId);
-              const summaryPreview = event.summary.split(". ").slice(0, 3).join(". ");
-
-              return (
-                <div
-                  key={event.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
-                >
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
-                      {event.category}
-                    </span>
-                    <span className="text-slate-400">&middot;</span>
-                    <span className="text-slate-500">{event.date}</span>
-                  </div>
-                  <h3 className="font-semibold text-slate-900">{event.title}</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    <span className="font-medium text-slate-700">
-                      {authority?.name ?? "Unknown authority"}
-                    </span>{" "}
-                    &mdash; {summaryPreview}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <StatCard label="Tracked spend from parsed data" value={formatCurrency(stats.trackedSpend)} />
-          <StatCard label="Authorities monitored" value={String(stats.authoritiesMonitored)} />
-          <StatCard label="New contract awards" value={String(stats.newContracts)} />
-          <StatCard label="On watchlist" value={String(stats.onWatchlist)} />
-        </div>
-      </section>
-
-      <section className="mx-auto mt-10 max-w-7xl px-4">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-bold text-slate-900">National league table</h2>
-          <Link
-            href="/watchlist"
-            className="text-sm font-medium text-blue-600 hover:underline"
+      <form onSubmit={onSearch} className="rounded-xl border bg-white p-4 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-4">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Store name, postcode, town, place ID, or store number"
+            className="md:col-span-3 rounded-lg border px-3 py-2"
+            required
+          />
+          <select
+            value={radiusMiles}
+            onChange={(e) => setRadiusMiles(Number(e.target.value))}
+            className="rounded-lg border px-3 py-2"
           >
-            View full watchlist &rarr;
-          </Link>
+            {radiusOptions.map((m) => (
+              <option key={m} value={m}>{m} miles</option>
+            ))}
+          </select>
         </div>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+        <button className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700" disabled={loading}>
+          {loading ? "Finding competitors..." : "Find Nearby Competitors"}
+        </button>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      </form>
+
+      <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold">CSV delivery import (Uber Eats / Just Eat / Deliveroo)</h2>
+        <p className="text-sm text-slate-600">Paste CSV rows to populate placeholder provider adapters with compliant manual data.</p>
+        <textarea
+          value={csvText}
+          onChange={(e) => setCsvText(e.target.value)}
+          className="mt-3 h-28 w-full rounded-lg border p-2 text-xs"
+          placeholder="restaurant_name,address,postcode,provider,rating,review_count,source_url,last_updated"
+        />
+        <button onClick={importCsv} className="mt-2 rounded-md border px-3 py-1 text-sm">Import CSV</button>
+      </section>
+
+      <section className="rounded-xl border bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h2 className="font-semibold">Nearby competitors</h2>
+            <p className="text-xs text-slate-500">{mcdLabel || "Run a search to load results."}</p>
+          </div>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="rounded border px-2 py-1 text-sm">
+            <option value="rank">Sort: Rank</option>
+            <option value="distance">Sort: Distance</option>
+            <option value="google">Sort: Google rating</option>
+            <option value="threat">Sort: Threat score</option>
+          </select>
+        </div>
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
-                <th className="px-4 py-3">Authority</th>
-                <th className="px-4 py-3">Stress</th>
-                <th className="px-4 py-3">Borrowing</th>
-                <th className="px-4 py-3">7d</th>
-                <th className="px-4 py-3">Refresh</th>
+                {[
+                  "Rank","Restaurant","Distance","Category","Google rating","Google reviews","Uber Eats","Just Eat","Deliveroo","Confidence","Last updated","Actions",
+                ].map((h) => <th key={h} className="px-3 py-2">{h}</th>)}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {scores
-                .slice()
-                .sort((a, b) => b.overall - a.overall)
-                .map((score) => {
-                  const authority = authorities.find((item) => item.id === score.authorityId);
-                  return (
-                    <tr key={score.authorityId} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/council/${authority?.slug}`}
-                          className="font-medium text-blue-700 hover:underline"
-                        >
-                          {authority?.name}
-                        </Link>
-                        <span className="ml-1 text-xs text-slate-400">{authority?.type}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-block h-2 w-2 rounded-full ${getBandDot(score.band)}`} />
-                        <span className="ml-1">{score.overall}</span>
-                        <span className={`ml-1 text-xs ${getBandColor(score.band)}`}>{score.band}</span>
-                      </td>
-                      <td className="px-4 py-3">{score.borrowingIndicator}</td>
-                      <td
-                        className={`px-4 py-3 ${
-                          score.change7d > 0
-                            ? "text-red-600"
-                            : score.change7d < 0
-                              ? "text-green-600"
-                              : "text-slate-400"
-                        }`}
-                      >
-                        {formatChange(score.change7d)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{score.latestRefresh}</td>
-                    </tr>
-                  );
-                })}
+            <tbody>
+              {sortedRows.map((r) => (
+                <tr key={r.competitorId} className="border-t align-top">
+                  <td className="px-3 py-2">{r.rank}</td>
+                  <td className="px-3 py-2"><p className="font-medium">{r.name}</p><p className="text-xs text-slate-500">{r.address}</p><p className="text-xs">Threat: {r.threatLabel} ({r.threatScore})</p></td>
+                  <td className="px-3 py-2">{r.distanceMiles} mi</td>
+                  <td className="px-3 py-2">{r.category || "-"}</td>
+                  <td className="px-3 py-2">{r.googleRating?.toFixed(1) ?? "-"}</td>
+                  <td className="px-3 py-2">{r.googleReviewCount ?? "-"}</td>
+                  <td className="px-3 py-2">{r.delivery.uber_eats ?? "unavailable"}</td>
+                  <td className="px-3 py-2">{r.delivery.just_eat ?? "unavailable"}</td>
+                  <td className="px-3 py-2">{r.delivery.deliveroo ?? "unavailable"}</td>
+                  <td className="px-3 py-2">{r.confidence}</td>
+                  <td className="px-3 py-2">{new Date(r.lastUpdated).toLocaleString()}</td>
+                  <td className="px-3 py-2 space-y-1">
+                    <Link href={`/competitor/${r.competitorId}`} className="block text-blue-600 hover:underline">View details</Link>
+                    <button onClick={() => refresh(r.competitorId)} className="block text-blue-600 hover:underline">Refresh data</button>
+                    <Link href={`/competitor/${r.competitorId}#delivery`} className="block text-blue-600 hover:underline">Add/edit delivery ratings</Link>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </section>
-
-      <section className="mx-auto mb-6 mt-6 max-w-7xl px-4">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600 leading-relaxed">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            Coverage &amp; freshness
-          </h2>
-          <p>
-            Coverage is still expanding. Some councils currently rely mainly on
-            annual central-government data (e.g. MHCLG revenue account and
-            capital outturn returns) rather than locally published documents.
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            {ingestionStatus.summary}{" "}
-            {ingestionStatus.status !== "pending" && (
-              <span>Last run: {ingestionStatus.latestRunDate}.</span>
-            )}
-          </p>
-        </div>
-      </section>
-
-      <section className="mx-auto mb-6 mt-10 max-w-7xl px-4">
-        <div className="rounded-2xl bg-slate-900 p-8 text-white">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">
-            Daily Briefing &mdash; {briefing.date}
-          </h2>
-          <h3 className="mt-2 text-xl font-bold">{briefing.headline}</h3>
-          <p className="mt-3 text-slate-300">{briefing.body}</p>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="mt-1 text-xs text-slate-500">{label}</div>
     </div>
   );
 }

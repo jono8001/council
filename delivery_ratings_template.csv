@@ -1,0 +1,4 @@
+restaurant_name,address,postcode,provider,rating,review_count,source_url,last_updated
+KFC Oldbury,123 High Street Oldbury,B69 4AA,uber_eats,4.4,580,https://www.ubereats.com/example,2026-04-24T08:00:00Z
+KFC Oldbury,123 High Street Oldbury,B69 4AA,just_eat,4.1,220,https://www.just-eat.co.uk/example,2026-04-24T08:00:00Z
+Pizza Hut Oldbury,42 Market Road Oldbury,B69 2AB,deliveroo,4.3,140,https://deliveroo.co.uk/example,2026-04-24T08:00:00Z

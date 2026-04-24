@@ -1,107 +1,143 @@
-# Council Finance Radar
+# McDonald's Local Competitor Radar (MVP)
 
-Council Finance Radar is a Next.js 14 app for monitoring English local authority finance signals from public data.
+Simple operator-friendly competitor intelligence app for McDonald's franchise teams.
+
+## What this MVP does
+
+- Search for a McDonald's location using store name, postcode, town, place ID, or store number.
+- Pick radius: 0.5 / 1 / 2 / 3 / 5 miles.
+- Pull nearby competitor outlets from Google Places.
+- Show ranked table with:
+  - restaurant, address, distance, category
+  - Google rating + review count
+  - Uber Eats / Just Eat / Deliveroo ratings (if available)
+  - confidence label
+  - last updated timestamp
+  - threat score (0-100) with clear weighting in code
+- Detail page per competitor with rating provenance and summary tags.
+- Manual delivery rating edits + CSV import for compliant fallback (no scraping).
+
+## Compliance stance
+
+This MVP **does not** implement aggressive scraping, anti-bot bypassing, or fake user-agent behaviour.
+Delivery providers currently use placeholder adapters plus CSV/manual input until approved API access exists.
 
 ## Stack
 
-- Next.js 14 (App Router)
-- TypeScript
-- Prisma + PostgreSQL (Supabase-compatible)
-- Zod, Cheerio, pdf-parse, xlsx
+- Next.js (App Router)
+- TypeScript + React
+- Tailwind CSS
+- Prisma + SQLite (easy MVP local setup; can swap to Supabase/Postgres)
 
-## What works now
-
-- Prisma-backed repository functions used by `/`, `/watchlist`, and `/council/[slug]`.
-- Source discovery + document persistence + parser pipeline orchestration.
-- Rule-based signal extraction and explainable score snapshot generation.
-- Daily briefing persistence and ingestion run status tracking.
-- Pilot authority seeding with initial source registry entries.
-
-## What is scaffolded and needs tuning
-
-- Source URLs in the seed script are templated defaults and must be validated per authority.
-- Contract/procurement ingestion is modelled but needs authority-specific source wiring.
-- Spend and PDF parsers are generic and will need council-specific adapters over time.
-
-## Prerequisites
-
-- Node.js 18+
-- PostgreSQL database (Supabase-compatible)
-- Environment variables configured in `.env`
-
-## Local setup
+## Setup
 
 1. Install dependencies:
    ```bash
    npm install
    ```
-2. Configure environment:
+2. Copy env file:
    ```bash
    cp .env.example .env
    ```
-3. Set `DATABASE_URL` to your Postgres instance.
-4. Generate Prisma client:
+3. Set `GOOGLE_MAPS_API_KEY`.
+4. Run Prisma migration and generate client:
    ```bash
-   npm run prisma:generate
+   npx prisma migrate dev --name init
+   npx prisma generate
    ```
-5. Run migration (local development):
+5. Start app:
    ```bash
-   npm run prisma:migrate
+   npm run dev
    ```
 
-For CI/production, use deploy migrations:
-```bash
-npm run prisma:migrate:deploy
-```
+## Database schema
 
-## Seed pilot authorities
+Implemented models:
+- `McdonaldsLocation`
+- `Competitor`
+- `CompetitorSnapshot`
+- `DeliveryRating`
+- `OperatorNote`
 
-Seeds 10 pilot councils and initial source registry entries:
+See `prisma/schema.prisma` and migration SQL.
 
-```bash
-npm run seed:authorities
-```
+## Adapter architecture
 
-## Run ingestion
+`ProviderRatingAdapter` interface methods:
+- `providerName`
+- `searchRestaurant(query, location)`
+- `getRating(providerRestaurantId)`
+- `getRestaurantUrl(providerRestaurantId)`
+- `normalizeResult(rawResult)`
+- `confidenceScore(match)`
 
-Runs discovery, parsing, signal extraction, scoring, and daily briefing generation:
+Implemented:
+- `GooglePlacesAdapter` (real)
+- `UberEatsAdapter` (placeholder)
+- `JustEatAdapter` (placeholder)
+- `DeliverooAdapter` (placeholder)
+- CSV import workflow (real)
 
-```bash
-npm run ingest
-```
+## CSV import format
 
-## Run app
+Use `delivery_ratings_template.csv`.
 
-```bash
-npm run dev
-```
+Columns:
+- `restaurant_name`
+- `address`
+- `postcode`
+- `provider` (`uber_eats`, `just_eat`, `deliveroo`)
+- `rating`
+- `review_count`
+- `source_url`
+- `last_updated`
 
-## Tests
+Matching logic:
+- High: exact name + postcode/address
+- Medium: similar name + postcode/address overlap
+- Low: partial name only
+- Unmatched: below threshold, skipped
 
-```bash
-npm run test
-```
+## Threat score formula (editable)
 
-## Deployment model
+Located in `src/lib/scoring.ts`:
+- 35% proximity
+- 25% Google rating
+- 15% Google review count
+- 15% delivery platform coverage
+- 10% delivery rating average
 
-Recommended:
+Band labels:
+- Low
+- Medium
+- High
+- Very high
 
-- **Frontend:** Vercel (Next.js app)
-- **Scheduled ingestion:** GitHub Actions cron, Supabase scheduled function, or external worker invoking `npm run ingest`
+## API docs
 
-## Manual configuration still required
+See `docs_api.md`.
 
-- Replace templated source URLs with known-good publication endpoints for each council.
-- Add procurement source links where authorities publish machine-readable award data.
-- Verify parser compatibility for each authority’s CSV/XLS(X)/PDF format variants.
+## What is real vs placeholder
 
-## Known limitations
+### Real now
+- McDonald's search + nearby competitor fetch via Google Places.
+- Google rating + review count pull and refresh.
+- Snapshot storage, ranking, threat scoring.
+- Manual delivery rating edits.
+- CSV delivery import with confidence-based matching.
 
-- No install/build/test validation was possible in this environment if npm registry access is blocked.
-- Ingestion currently prioritizes determinism and safety over aggressive scraping breadth.
-- Authorities with partial/no source coverage will still receive low-information score snapshots.
+### Placeholder now
+- Direct Uber Eats API integration.
+- Direct Just Eat API integration.
+- Direct Deliveroo API integration.
 
+These are intentionally placeholder until compliant approved API/data access is available.
 
-## GitHub Actions (recommended)
+## Next steps (toward production)
 
-A workflow is included at `.github/workflows/verify-and-ingest.yml` to verify PRs/pushes and run scheduled ingestion at 04:00 UTC.
+1. Upgrade to managed Postgres/Supabase and add auth.
+2. Add approved provider API integrations and scheduled refresh jobs.
+3. Add robust CSV parser (quoted commas, validation, error report UI).
+4. Add store portfolio management (multi-store franchise dashboard).
+5. Add trend charts and weekly alerts by competitor threat movement.
+6. Add audit log and role-based permissions.
